@@ -47,6 +47,8 @@ data class HotspotConfig(
     /** 0 代表不限制，實際上限為 [HotspotCapability.maxSupportedClients]。 */
     val maxClients: Int,
     val autoShutdown: Boolean,
+    /** 開啟後熱點下的裝置彼此無法直接連線，只能連到閘道與外部網路。 */
+    val clientIsolation: Boolean,
 )
 
 data class HotspotCapability(

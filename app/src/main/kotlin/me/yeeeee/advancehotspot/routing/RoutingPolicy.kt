@@ -41,6 +41,7 @@ fun buildRoutingPlan(
     policies: Map<String, DevicePolicy>,
     defaultEgress: Egress,
     resolved: Map<Egress, ResolvedEgress>,
+    extraSubnets: List<String> = emptyList(),
 ): RoutingPlan {
     fun routeFor(egress: Egress): Route = when (egress) {
         Egress.INHERIT, Egress.SYSTEM -> Route.System
@@ -62,7 +63,7 @@ fun buildRoutingPlan(
     val absent = policies.filterKeys { it !in connectedMacs }.map { (mac, policy) ->
         ClientRoute(mac, null, routeFor(policy))
     }
-    return RoutingPlan(downstream, connected + absent, defaultRoute)
+    return RoutingPlan(downstream, connected + absent, defaultRoute, extraSubnets)
 }
 
 /** 路由控制的持久化設定。 */

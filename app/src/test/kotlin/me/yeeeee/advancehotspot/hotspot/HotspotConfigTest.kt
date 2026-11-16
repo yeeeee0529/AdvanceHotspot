@@ -22,6 +22,7 @@ class HotspotConfigTest {
         hidden = false,
         maxClients = 8,
         autoShutdown = true,
+        clientIsolation = false,
     )
 
     @Test

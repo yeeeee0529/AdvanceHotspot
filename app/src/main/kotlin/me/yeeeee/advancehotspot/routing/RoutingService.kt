@@ -28,6 +28,15 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import me.yeeeee.advancehotspot.R
+import me.yeeeee.advancehotspot.devices.DeviceStore
+import me.yeeeee.advancehotspot.hotspot.ConnectedClient
+import me.yeeeee.advancehotspot.intranet.IntranetConfig
+import me.yeeeee.advancehotspot.intranet.IntranetStore
+import me.yeeeee.advancehotspot.intranet.buildHostEntries
+import me.yeeeee.advancehotspot.intranet.intranetTeardownScript
+import me.yeeeee.advancehotspot.intranet.isAssignableAddress
+import me.yeeeee.advancehotspot.intranet.subnetOf
+import me.yeeeee.advancehotspot.intranet.toScript
 import me.yeeeee.advancehotspot.hotspot.ClientSnapshot
 import me.yeeeee.advancehotspot.hotspot.HotspotController
 import me.yeeeee.advancehotspot.root.RootShell
@@ -52,12 +61,15 @@ object RoutingRuntime {
         requests.tryEmit(Unit)
     }
 
-    fun start(context: Context) {
-        context.startForegroundService(Intent(context, RoutingService::class.java))
-    }
-
-    fun stop(context: Context) {
-        context.stopService(Intent(context, RoutingService::class.java))
+    /** 依目前的設定啟動或停止服務：路由控制或自訂內網任一項啟用就需要它。 */
+    fun sync(context: Context) {
+        val intent = Intent(context, RoutingService::class.java)
+        if (RoutingStore(context).enabled || IntranetStore(context).enabled) {
+            context.startForegroundService(intent)
+            requestApply()
+        } else {
+            context.stopService(intent)
+        }
     }
 }
 
@@ -71,12 +83,18 @@ class RoutingService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val trigger = Channel<Unit>(Channel.CONFLATED)
     private lateinit var store: RoutingStore
+    private lateinit var intranetStore: IntranetStore
+    private lateinit var deviceStore: DeviceStore
     private lateinit var resolver: EgressResolver
     private lateinit var controller: HotspotController
     private lateinit var connectivityManager: ConnectivityManager
 
     private var snapshot: ClientSnapshot? = null
     private var rulesApplied = false
+
+    /** 內網目前套用在哪個介面與閘道上，用於之後移除。 */
+    private var intranetApplied: Pair<String, String>? = null
+    private var lastLeases: List<String> = emptyList()
     private var cellularHold: ConnectivityManager.NetworkCallback? = null
 
     /** 任何網路的出現、消失或屬性改變都可能影響出口對應。 */
@@ -91,6 +109,8 @@ class RoutingService : Service() {
     override fun onCreate() {
         super.onCreate()
         store = RoutingStore(this)
+        intranetStore = IntranetStore(this)
+        deviceStore = DeviceStore(this)
         resolver = EgressResolver(this)
         controller = HotspotController(applicationInfo.sourceDir)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
@@ -113,6 +133,7 @@ class RoutingService : Service() {
             }
         }
         scope.launch(Dispatchers.IO) { watchClients() }
+        scope.launch { watchLeases() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
@@ -124,7 +145,12 @@ class RoutingService : Service() {
         RoutingRuntime.status.value = RoutingStatus()
         // 服務的 scope 已取消，收尾工作交給獨立的 scope 完成
         CoroutineScope(Dispatchers.IO).launch {
-            RootShell.run("pkill -f '$WATCH_PROCESS_PATTERN'", routingTeardownScript())
+            val (iface, gateway) = intranetApplied ?: (null to intranetStore.gateway)
+            RootShell.run(
+                "pkill -f '$WATCH_PROCESS_PATTERN'",
+                routingTeardownScript(),
+                intranetTeardownScript(iface, gateway, intranetStore.directory),
+            )
         }
         super.onDestroy()
     }
@@ -150,16 +176,80 @@ class RoutingService : Service() {
         }
     }
 
+    /**
+     * 自訂內網的租約由 dnsmasq 寫入檔案，沒有事件可以訂閱，只能定期檢查；
+     * 裝置拿到新位址後，路由規則與本地名稱都要跟著更新。
+     */
+    private suspend fun watchLeases() {
+        while (scope.isActive) {
+            delay(LEASE_POLL_INTERVAL_MS)
+            if (intranetApplied == null) continue
+            val leases = RootShell.run("cat ${intranetStore.directory}/leases 2>/dev/null").stdout
+            if (leases != lastLeases) requestApply()
+        }
+    }
+
+    /** 建立、更新或移除自訂內網，回傳錯誤訊息；成功時回傳 null。 */
+    private suspend fun applyIntranet(downstream: Downstream?, clients: List<ConnectedClient>): String? {
+        val gateway = intranetStore.gateway
+        val applied = intranetApplied
+        val wanted = if (intranetStore.enabled && downstream != null) downstream.iface to gateway else null
+        if (applied != null && applied != wanted) {
+            // 介面消失時位址與路由已隨之移除，只需要清掉行程與規則
+            val iface = applied.first.takeIf { it == downstream?.iface }
+            RootShell.run(intranetTeardownScript(iface, applied.second, intranetStore.directory))
+            intranetApplied = null
+        }
+        if (wanted == null || downstream == null) return null
+
+        val config = IntranetConfig(
+            gateway = gateway,
+            staticLeases = intranetStore.staticLeases().filterValues { isAssignableAddress(gateway, it) },
+            hosts = buildHostEntries(
+                gateway,
+                clients.filter { it.ip != null && isAssignableAddress(gateway, it.ip) }.map { client ->
+                    client.ip!! to listOf(deviceStore.nickname(client.mac), client.hostname)
+                },
+            ),
+            upstreamDns = resolver.defaultDnsServers().ifEmpty { listOf(FALLBACK_DNS) },
+        )
+        return try {
+            val result = RootShell.run(config.toScript(downstream.iface, intranetStore.directory))
+            intranetApplied = wanted
+            if (result.isSuccess) null else result.stderr.takeLast(3).joinToString(" | ").ifEmpty { "intranet exit ${result.exitCode}" }
+        } catch (exception: IllegalArgumentException) {
+            exception.message
+        }
+    }
+
     private suspend fun apply() {
-        val current = snapshot
-        val downstream = current?.downstream
+        val systemSnapshot = snapshot
+        val downstream = systemSnapshot?.downstream
         if (downstream == null) {
             // 熱點未開啟：移除殘留規則
+            applyIntranet(null, emptyList())
             if (rulesApplied) {
                 RootShell.run(routingTeardownScript())
                 rulesApplied = false
             }
             RoutingRuntime.status.value = RoutingStatus(running = true)
+            return
+        }
+
+        lastLeases = if (intranetStore.enabled) {
+            RootShell.run("cat ${intranetStore.directory}/leases 2>/dev/null").stdout
+        } else {
+            emptyList()
+        }
+        val current = intranetStore.mergeLeases(systemSnapshot)
+        val intranetError = applyIntranet(downstream, current.clients)
+
+        if (!store.enabled) {
+            if (rulesApplied) {
+                RootShell.run(routingTeardownScript())
+                rulesApplied = false
+            }
+            RoutingRuntime.status.value = RoutingStatus(running = true, downstream = downstream, error = intranetError)
             return
         }
 
@@ -173,6 +263,7 @@ class RoutingService : Service() {
             policies = policies,
             defaultEgress = defaultEgress,
             resolved = resolver.resolve(downstream.iface),
+            extraSubnets = listOfNotNull(intranetApplied?.let { subnetOf(it.second) }),
         )
         val result = try {
             RootShell.run(plan.toScript())
@@ -184,7 +275,8 @@ class RoutingService : Service() {
         RoutingRuntime.status.value = RoutingStatus(
             running = true,
             downstream = downstream,
-            error = if (result.isSuccess) null else result.stderr.takeLast(3).joinToString(" | ").ifEmpty { "exit ${result.exitCode}" },
+            error = intranetError
+                ?: if (result.isSuccess) null else result.stderr.takeLast(3).joinToString(" | ").ifEmpty { "exit ${result.exitCode}" },
         )
     }
 
@@ -233,6 +325,7 @@ class RoutingService : Service() {
         const val NOTIFICATION_CHANNEL = "routing"
         const val DEBOUNCE_MS = 300L
         const val WATCH_RESTART_DELAY_MS = 3000L
+        const val LEASE_POLL_INTERVAL_MS = 4000L
         const val WATCH_PROCESS_PATTERN = "HelperMain watch"
     }
 }
@@ -240,8 +333,6 @@ class RoutingService : Service() {
 /** 開機後熱點可能由系統介面直接開啟，路由控制啟用時要先把服務帶起來。 */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED && RoutingStore(context).enabled) {
-            RoutingRuntime.start(context)
-        }
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) RoutingRuntime.sync(context)
     }
 }

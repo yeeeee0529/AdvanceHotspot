@@ -281,6 +281,14 @@ private fun SettingsCard(
             SwitchRow(R.string.settings_auto_shutdown, draft.autoShutdown, enabled) { value ->
                 onEdit { it.copy(autoShutdown = value) }
             }
+            SwitchRow(R.string.settings_client_isolation, draft.clientIsolation, enabled) { value ->
+                onEdit { it.copy(clientIsolation = value) }
+            }
+            Text(
+                stringResource(R.string.settings_client_isolation_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

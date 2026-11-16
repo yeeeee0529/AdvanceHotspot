@@ -70,6 +70,7 @@ class SoftApBridge(context: Context) {
         builder.call("setHiddenSsid", json.getBoolean("hidden"))
         builder.call("setMaxNumberOfClients", json.getInt("maxClients"))
         builder.call("setAutoShutdownEnabled", json.getBoolean("autoShutdown"))
+        builder.call("setClientIsolationEnabled", json.getBoolean("clientIsolation"))
 
         val accepted = wifiManager.call("setSoftApConfiguration", builder.call("build")) as Boolean
         if (!accepted) throw IllegalStateException("System rejected the SoftAP configuration")
@@ -226,6 +227,7 @@ class SoftApBridge(context: Context) {
             .put("hidden", config.call("isHiddenSsid"))
             .put("maxClients", config.call("getMaxNumberOfClients"))
             .put("autoShutdown", config.call("isAutoShutdownEnabled"))
+            .put("clientIsolation", config.call("isClientIsolationEnabled"))
     }
 
     private fun blockedMacs(config: Any): List<String> =

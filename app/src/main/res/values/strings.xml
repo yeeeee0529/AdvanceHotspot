@@ -100,4 +100,19 @@
     <string name="egress_ethernet">乙太網路</string>
     <string name="egress_status_online">%1$s 經由 %2$s</string>
     <string name="egress_status_offline">%1$s 未連線，已斷網</string>
+
+    <string name="settings_client_isolation">裝置間隔離</string>
+    <string name="settings_client_isolation_hint">開啟後連線裝置彼此無法直接連線，只能連到這支手機與外部網路。</string>
+    <string name="action_apply">套用</string>
+    <string name="action_static_ip">固定 IP</string>
+    <string name="intranet_title">自訂內網</string>
+    <string name="intranet_description">由本 app 接手發放 IP 位址，可自訂網段、綁定固定 IP，並讓裝置以「名稱.lan」互相連線。開啟或關閉後，已連線的裝置要重新連線才會換到新網段。</string>
+    <string name="intranet_gateway">閘道位址</string>
+    <string name="intranet_gateway_hint">網段固定為 /24，例如 10.77.0.1</string>
+    <string name="intranet_gateway_error">請輸入私有網段的 IPv4 位址，例如 10.77.0.1</string>
+    <string name="device_static_ip">固定 IP：%1$s</string>
+    <string name="static_ip_title">設定固定 IP</string>
+    <string name="static_ip_label">IP 位址</string>
+    <string name="static_ip_hint">必須在 %1$s.x 網段內；留空會取消固定 IP。</string>
+    <string name="static_ip_error">位址不在內網網段內，或與閘道相同。</string>
 </resources>

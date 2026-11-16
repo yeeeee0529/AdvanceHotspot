@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -53,6 +55,7 @@ private const val REFRESH_INTERVAL_MS = 4000L
 fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var renamingMac by rememberSaveable { mutableStateOf<String?>(null) }
+    var staticIpMac by rememberSaveable { mutableStateOf<String?>(null) }
     // 前景服務的通知需要這個權限才看得到；使用者拒絕時服務仍會執行
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
@@ -109,6 +112,9 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
             )
         }
         item {
+            IntranetCard(state, viewModel::setIntranetEnabled, viewModel::setGateway)
+        }
+        item {
             Text(
                 stringResource(R.string.devices_connected_title, state.connected.size),
                 style = MaterialTheme.typography.titleMedium,
@@ -129,6 +135,7 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
                 enabled = !state.busy,
                 blockLabel = stringResource(R.string.action_block),
                 onRename = { renamingMac = device.mac },
+                onStaticIp = if (state.intranetEnabled) ({ staticIpMac = device.mac }) else null,
                 onToggleBlock = { viewModel.setBlocked(device.mac, true) },
                 routing = if (state.routingEnabled) {
                     DeviceRouting(state.defaultEgress, state.resolvedEgress) { viewModel.setPolicy(device.mac, it) }
@@ -151,6 +158,7 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
                     enabled = !state.busy,
                     blockLabel = stringResource(R.string.action_block),
                     onRename = { renamingMac = device.mac },
+                onStaticIp = if (state.intranetEnabled) ({ staticIpMac = device.mac }) else null,
                     onToggleBlock = { viewModel.setBlocked(device.mac, true) },
                     routing = DeviceRouting(state.defaultEgress, state.resolvedEgress) {
                         viewModel.setPolicy(device.mac, it)
@@ -172,19 +180,39 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
                     enabled = !state.busy,
                     blockLabel = stringResource(R.string.action_unblock),
                     onRename = { renamingMac = device.mac },
+                onStaticIp = if (state.intranetEnabled) ({ staticIpMac = device.mac }) else null,
                     onToggleBlock = { viewModel.setBlocked(device.mac, false) },
                 )
             }
         }
     }
 
+    staticIpMac?.let { mac ->
+        val device = (state.connected + state.offline + state.blocked).firstOrNull { it.mac == mac }
+        TextInputDialog(
+            title = stringResource(R.string.static_ip_title),
+            label = stringResource(R.string.static_ip_label),
+            hint = stringResource(R.string.static_ip_hint, state.gateway.substringBeforeLast('.')),
+            // 不預填目前的 IP：它可能還是舊網段的位址，直接儲存會被判定為不合法
+            initial = device?.staticIp.orEmpty(),
+            errorMessage = stringResource(R.string.static_ip_error),
+            onConfirm = { viewModel.setStaticIp(mac, it) },
+            onDismiss = { staticIpMac = null },
+            keyboardType = KeyboardType.Decimal,
+        )
+    }
+
     renamingMac?.let { mac ->
         val device = (state.connected + state.offline + state.blocked).firstOrNull { it.mac == mac }
-        RenameDialog(
+        TextInputDialog(
+            title = stringResource(R.string.rename_title),
+            label = stringResource(R.string.rename_label),
+            hint = stringResource(R.string.rename_hint),
             initial = device?.nickname.orEmpty(),
+            errorMessage = null,
             onConfirm = { nickname ->
                 viewModel.rename(mac, nickname)
-                renamingMac = null
+                true
             },
             onDismiss = { renamingMac = null },
         )
@@ -199,6 +227,7 @@ private fun DeviceCard(
     onRename: () -> Unit,
     onToggleBlock: () -> Unit,
     routing: DeviceRouting? = null,
+    onStaticIp: (() -> Unit)? = null,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 4.dp)) {
@@ -220,6 +249,21 @@ private fun DeviceCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
+            device.localName?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            device.staticIp?.let {
+                Text(
+                    stringResource(R.string.device_static_ip, it),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (routing != null) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
                     Text(
@@ -243,6 +287,9 @@ private fun DeviceCard(
                 }
             }
             Row(Modifier.align(Alignment.End)) {
+                if (onStaticIp != null) {
+                    TextButton(onClick = onStaticIp) { Text(stringResource(R.string.action_static_ip)) }
+                }
                 TextButton(onClick = onRename) { Text(stringResource(R.string.action_rename)) }
                 TextButton(onClick = onToggleBlock, enabled = enabled) { Text(blockLabel) }
             }
@@ -348,22 +395,97 @@ private fun EgressStatus(egress: Egress, resolved: Map<Egress, ResolvedEgress>) 
 }
 
 @Composable
-private fun RenameDialog(initial: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+private fun IntranetCard(state: DevicesUiState, onToggle: (Boolean) -> Unit, onGateway: (String) -> Boolean) {
+    var gatewayText by rememberSaveable(state.gateway) { mutableStateOf(state.gateway) }
+    var invalid by rememberSaveable { mutableStateOf(false) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.intranet_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(checked = state.intranetEnabled, onCheckedChange = onToggle)
+            }
+            Text(
+                stringResource(R.string.intranet_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (state.intranetEnabled) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = gatewayText,
+                        onValueChange = {
+                            gatewayText = it
+                            invalid = false
+                        },
+                        label = { Text(stringResource(R.string.intranet_gateway)) },
+                        isError = invalid,
+                        supportingText = {
+                            Text(
+                                stringResource(
+                                    if (invalid) R.string.intranet_gateway_error else R.string.intranet_gateway_hint,
+                                ),
+                            )
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = { invalid = !onGateway(gatewayText.trim()) },
+                        enabled = gatewayText.trim() != state.gateway,
+                    ) {
+                        Text(stringResource(R.string.action_apply))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 單一文字欄位的輸入對話框。
+ *
+ * @param onConfirm 回傳 false 代表輸入不合法，對話框會留著並顯示 [errorMessage]。
+ */
+@Composable
+private fun TextInputDialog(
+    title: String,
+    label: String,
+    hint: String,
+    initial: String,
+    errorMessage: String?,
+    onConfirm: (String) -> Boolean,
+    onDismiss: () -> Unit,
+    keyboardType: KeyboardType = KeyboardType.Text,
+) {
     var text by rememberSaveable { mutableStateOf(initial) }
+    var invalid by rememberSaveable { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.rename_title)) },
+        title = { Text(title) },
         text = {
             OutlinedTextField(
                 value = text,
-                onValueChange = { text = it },
-                label = { Text(stringResource(R.string.rename_label)) },
-                supportingText = { Text(stringResource(R.string.rename_hint)) },
+                onValueChange = {
+                    text = it
+                    invalid = false
+                },
+                label = { Text(label) },
+                isError = invalid,
+                supportingText = { Text(if (invalid && errorMessage != null) errorMessage else hint) },
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
                 singleLine = true,
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(text) }) { Text(stringResource(R.string.action_save)) }
+            TextButton(onClick = { if (onConfirm(text)) onDismiss() else invalid = true }) {
+                Text(stringResource(R.string.action_save))
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }

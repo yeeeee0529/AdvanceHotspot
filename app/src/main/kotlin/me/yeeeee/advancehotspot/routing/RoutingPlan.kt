@@ -41,6 +41,8 @@ data class RoutingPlan(
     val downstream: Downstream,
     val clients: List<ClientRoute>,
     val defaultRoute: Route,
+    /** 熱點介面上除了系統網段以外、同樣需要做 NAT 的網段（自訂內網）。 */
+    val extraSubnets: List<String> = emptyList(),
 )
 
 private const val CHAIN_FORWARD = "ah_fwd"
@@ -59,6 +61,7 @@ private const val NETD_TABLE_OFFSET = 1000
 private val IFACE_PATTERN = Regex("[A-Za-z0-9_.-]{1,15}")
 private val MAC_PATTERN = Regex("[0-9a-f]{2}(:[0-9a-f]{2}){5}")
 private val IPV4_PATTERN = Regex("\\d{1,3}(\\.\\d{1,3}){3}")
+private val SUBNET_PATTERN = Regex("\\d{1,3}(\\.\\d{1,3}){3}/\\d{1,2}")
 
 /** [chain] 掛在 [table] 的哪一條內建鏈上。 */
 private data class Hook(val table: String, val parent: String, val chain: String)
@@ -169,7 +172,10 @@ fun RoutingPlan.toScript(): String {
         dropDnsToHost(input6, "")
     }
 
-    val postrouting = egressIfaces.map { "-A $CHAIN_POSTROUTING -s ${downstream.subnet} -o $it -j MASQUERADE" }
+    val subnets = (listOf(downstream.subnet) + extraSubnets).map { requireMatch(SUBNET_PATTERN, it) }
+    val postrouting = egressIfaces.flatMap { egress ->
+        subnets.map { "-A $CHAIN_POSTROUTING -s $it -o $egress -j MASQUERADE" }
+    }
     // VPN 介面的 MTU 較小，不調整 MSS 會讓部分網站連線卡住
     val mangle = egressIfaces.flatMap { egress ->
         listOf("-o $egress", "-i $egress").map { direction ->

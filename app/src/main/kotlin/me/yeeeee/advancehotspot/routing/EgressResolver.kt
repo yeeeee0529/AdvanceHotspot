@@ -10,6 +10,14 @@ import java.util.EnumMap
 class EgressResolver(context: Context) {
     private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
 
+    /** 手機預設網路的 IPv4 DNS 伺服器，作為內網 DNS 的上游。 */
+    fun defaultDnsServers(): List<String> {
+        val network = connectivityManager.activeNetwork ?: return emptyList()
+        return connectivityManager.getLinkProperties(network)?.dnsServers.orEmpty()
+            .filterIsInstance<Inet4Address>()
+            .mapNotNull { it.hostAddress }
+    }
+
     /**
      * @param excludeIface 熱點自己的介面，不可當成出口。
      */

@@ -114,6 +114,7 @@ class HotspotController(private val apkPath: String) {
         hidden = json.getBoolean("hidden"),
         maxClients = json.getInt("maxClients"),
         autoShutdown = json.getBoolean("autoShutdown"),
+        clientIsolation = json.getBoolean("clientIsolation"),
     )
 
     private fun parseCapability(json: JSONObject): HotspotCapability {
@@ -134,6 +135,7 @@ class HotspotController(private val apkPath: String) {
         .put("hidden", hidden)
         .put("maxClients", maxClients)
         .put("autoShutdown", autoShutdown)
+        .put("clientIsolation", clientIsolation)
 
     private fun encode(json: JSONObject): String = Base64.encodeToString(
         json.toString().toByteArray(Charsets.UTF_8),

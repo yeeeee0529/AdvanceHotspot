@@ -48,6 +48,7 @@ KernelSU does not prompt for root. Open the KernelSU manager, enable superuser f
 | `app/src/main/kotlin/.../hotspot` | Hotspot model, validation, and the controller that invokes the helper |
 | `app/src/main/kotlin/.../devices` | Per-device annotations stored by MAC address |
 | `app/src/main/kotlin/.../routing` | Routing policy, rule script generator, egress resolution and the foreground service |
+| `app/src/main/kotlin/.../intranet` | Custom subnet settings and the script generator that manages dnsmasq and the DHCP redirect |
 | `app/src/main/kotlin/.../system` | Device and network probing, command output parsers |
 | `app/src/main/kotlin/.../ui` | Jetpack Compose screens and view models |
 
@@ -81,6 +82,24 @@ Known limits:
 - Mobile data as an egress is untested, and carriers that provide IPv4 through 464XLAT are not handled yet.
 - Turning routing off does not re-attach the BPF offload program; it returns the next time the hotspot starts.
 
+## How the custom intranet works
+
+Turn on "custom intranet" in the Devices tab. The same foreground service then takes over address assignment on the hotspot interface.
+
+- It adds a second address to the hotspot interface as the gateway, for example `10.77.0.1/24`. The hotspot can still be started from anywhere, including the system quick settings.
+- It runs the phone's own `/system/bin/dnsmasq` twice: one instance for DHCP only, one for DNS only on the gateway address.
+- The system DHCP server holds UDP port 67 and cannot be turned off. dnsmasq therefore listens on port 1067, and NAT rules redirect DHCP to it. Broadcast requests keep their broadcast destination and only the port is rewritten; rewriting the address makes the kernel drop requests whose source is `0.0.0.0`.
+- Static IP bindings are written to a dnsmasq hosts file keyed by MAC address.
+- Local names are generated from each device's nickname, or its own hostname when there is no usable nickname, and resolve as `name.lan`. The gateway is `hotspot.lan`. Only letters, digits and hyphens are kept, so a nickname written entirely in Chinese falls back to the hostname.
+- Client isolation is a hotspot setting in the Hotspot tab. It takes effect the next time the hotspot starts.
+
+Known limits:
+
+- The subnet is always a /24.
+- Devices that are already connected keep their old address until they reconnect or their lease runs out. The same applies after turning the intranet off, so reconnect devices then.
+- A device bound to a specific egress has its DNS redirected to that network's DNS server and cannot resolve `.lan` names.
+- Client isolation was verified as a stored setting only. That devices are actually isolated from each other was not tested.
+
 ## Status
 
-Phases 1 to 4 are done. The app configures and toggles the hotspot, lists connected devices with nickname and MAC blocking, and controls each device's internet access and egress with a kill switch. Custom subnet, static leases, local DNS, client isolation, rate limiting and traffic statistics are not implemented yet. See the phase table in the [overview](../../README.md#status).
+Phases 1 to 5 are done. The app configures and toggles the hotspot, lists connected devices with nickname and MAC blocking, controls each device's internet access and egress with a kill switch, and provides a custom subnet with static IP bindings, local DNS names and client isolation. Rate limiting and traffic statistics are not implemented yet. See the phase table in the [overview](../../README.md#status).
