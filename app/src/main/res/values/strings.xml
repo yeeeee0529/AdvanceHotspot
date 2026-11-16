@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">進階熱點</string>
+    <string name="action_refresh">重新整理</string>
+    <string name="root_title">Root 權限</string>
+    <string name="root_granted">已授權</string>
+    <string name="root_denied">未授權</string>
+    <string name="root_denied_hint">請在 KernelSU 管理器中授權本 app，然後按「重新整理」。</string>
+    <string name="system_title">系統</string>
+    <string name="system_android">Android 版本</string>
+    <string name="system_device">裝置</string>
+    <string name="system_kernel">核心</string>
+    <string name="system_selinux">SELinux</string>
+    <string name="tools_title">網路工具</string>
+    <string name="tool_available">可用</string>
+    <string name="tool_missing">找不到</string>
+    <string name="interfaces_title">網路介面</string>
+    <string name="interface_no_address">沒有位址</string>
+    <string name="value_unknown">未知</string>
+</resources>
