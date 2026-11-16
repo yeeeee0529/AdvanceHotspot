@@ -18,7 +18,7 @@ All six planned phases are implemented and committed on the local `main` branch.
 | 6 | Per-device traffic statistics and rate limits | Done |
 | UI | Material 3 Expressive rewrite, four tabs | Done; on-device check partial (see Verification status) |
 
-Last check results: `assembleDebug` passes, 27 unit tests pass, `lintDebug` reports 0 errors and 2 accepted warnings (`AndroidGradlePluginVersion`, `DataExtractionRules`).
+Last check results: `assembleDebug` passes, 29 unit tests pass, `lintDebug` reports 0 errors and 2 accepted warnings (`AndroidGradlePluginVersion`, `DataExtractionRules`).
 
 The UI was rewritten to Material 3 Expressive on 2026-11-16. Only the `ui` package, `MainActivity`-adjacent theme, resources and docs changed; no view model, script generator or root-side code changed.
 
@@ -74,6 +74,8 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - **A context wrapper is not enough.** Managers are built on the underlying `ContextImpl`, so the op package name stays `android`. `SoftApBridge` overwrites each manager's `mContext` field with the wrapper. `setOuterContext` did not work.
 - **The system DHCP server owns UDP port 67 and cannot be stopped.** dnsmasq cannot bind next to it. dnsmasq listens on port 1067 (`--dhcp-alternate-port`) and NAT redirects DHCP to it.
 - **Broadcast DHCP must keep its broadcast destination.** `REDIRECT` rewrites the destination to a unicast address, and the kernel then drops requests whose source is `0.0.0.0`. The working rule is `DNAT --to-destination 255.255.255.255:1067`.
+- **All clients' DHCP broadcasts share one conntrack entry, and NAT only sees the first packet of a flow.** Every DISCOVER is `0.0.0.0:68 -> 255.255.255.255:67`. If clients are already retrying DHCP when the DNAT rule is installed, the un-NATed entry is refreshed forever (30 s timeout), the rule counter stays at 0 and the system DHCP server keeps receiving the requests. The same happens in reverse after teardown. The phone has no `conntrack` tool, so the scripts insert a temporary `raw PREROUTING ... --dport 67 -j DROP` (raw runs before conntrack), a background subshell waits for the entry to leave `/proc/net/nf_conntrack`, then removes the drop. Diagnose with `grep 'dport=67 ' /proc/net/nf_conntrack`: reply tuple `sport=67` means not redirected, `sport=1067` means redirected.
+- **With a VPN up, netd rule 13000 sends root-owned traffic into the VPN.** dnsmasq's unicast DHCP replies and its DNS replies left through `tun0` and never reached clients. The intranet script adds `ip rule add to <subnet> iif lo lookup 97 prio 10500`. `tcpdump -i any` shows which interface replies leave from; `tcpdump -i wlan2` alone only shows that they are missing.
 - **The DHCP dnsmasq instance must use `--interface`, not `--listen-address`.** With only the alias address allowed, it ignores requests arriving on the hotspot interface.
 - **Android's dnsmasq 2.51 spins at 100% CPU when stdin reaches EOF.** It reads control commands from stdin. Its stdin is connected to a FIFO opened read-write. It also produces no usable log output, so verify through the lease file and packet counters.
 - **Tethering BPF offload bypasses netfilter.** Upload is offloaded on the hotspot interface and download on the upstream interface. Routing removes the hotspot-side program; traffic removes both. Tethering re-attaches them when the upstream changes, so the removal runs on every apply.
@@ -91,6 +93,8 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 | Device list | Verified on device |
 | Internet switch, VPN egress, kill switch | Verified on device. On a real VPN drop only the rule swap was observed, not dropped packets |
 | Custom subnet, static lease, local DNS, rebuild after hotspot restart | Verified on device |
+| Intranet DHCP with clients already retrying and a VPN active on the phone | Verified on device 2026-11-16: three clients got leases and answered ping; DNS replies leave on the hotspot interface |
+| Conntrack expiry on intranet teardown (turning the intranet off with clients connected) | Not tested on device |
 | Traffic counters | Verified on device |
 | Rate limit | Rule application verified; the `hashlimit` condition was shown to drop packets with a ping test. Not measured against a real client download |
 | MAC blocking | Blocklist write verified and used to kick a client. Not confirmed that a blocked client stays out |
@@ -111,11 +115,10 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 
 ## State left on the test phone
 
-- On 2026-11-16 the app was found uninstalled at the start of the session (the phone had also rebooted). It was installed fresh, so all earlier app settings are gone: routing, intranet and traffic are off, with no static leases, nicknames or limits.
-- The hotspot is off.
-- The owner granted the fresh install root in KernelSU during the session. `adb shell` has root.
-- The notification permission has not been requested for the fresh install yet.
-- Dark mode is on (`cmd uimode night yes`). Auto-rotate is on; an agent tap may have hit its Quick Settings tile, so its earlier value is unknown.
+- As found on 2026-11-16 (DHCP fix session), set by the owner and left unchanged: hotspot on with several clients, intranet on with a custom gateway, routing on, traffic on, and a VPN active on the phone. The routing chain currently drops all forwarding for every client; this is the owner's policy state, not something an agent set.
+- The app was updated in place (`adb install -r`) with the DHCP fix; settings and the root grant were kept.
+- `adb shell` has root.
+- Dark mode is on (`cmd uimode night yes`). Auto-rotate is on; its earlier value is unknown.
 
 ## Working with the phone
 
@@ -138,6 +141,12 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-16 (DHCP fix)
+
+- Owner report: devices connect but get no IP address. Two independent causes, both fixed in `intranet/Intranet.kt` and verified on the phone: a stale shared conntrack entry kept DHCP broadcasts away from the DNAT rule, and with a VPN active dnsmasq's replies were routed into `tun0`. See the two new entries under "Findings that cost time to discover".
+- Added two unit tests for the generated script lines. README technical notes updated in both languages.
+- Unfinished: the teardown direction of the conntrack expiry (intranet switched off while clients are connected) is implemented but not tested on the phone.
 
 ### 2026-11-16 (UI rewrite)
 

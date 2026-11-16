@@ -99,4 +99,28 @@ class IntranetTest {
 
         assertThrows(IllegalArgumentException::class.java) { config.toScript("wlan2", "/data/intranet") }
     }
+
+    @Test
+    fun scriptsExpireStaleDhcpConntrackEntryInBothDirections() {
+        val drop = "-t raw -I PREROUTING -i wlan2 -p udp --dport 67 -j DROP"
+        val setup = IntranetConfig("10.77.0.1", emptyMap(), emptyList(), emptyList())
+            .toScript("wlan2", "/data/intranet")
+        val teardown = intranetTeardownScript("wlan2", "10.77.0.1", "/data/intranet")
+
+        // 啟用時要淘汰尚未轉向的項目，停用時要淘汰仍在轉向的項目
+        assertTrue(drop in setup)
+        assertTrue(".*sport=67 dport=68' /proc/net/nf_conntrack" in setup)
+        assertTrue(drop in teardown)
+        assertTrue(".*sport=1067 dport=68' /proc/net/nf_conntrack" in teardown)
+        assertFalse("raw" in intranetTeardownScript(null, "10.77.0.1", "/data/intranet"))
+    }
+
+    @Test
+    fun scriptRoutesLocalRepliesAheadOfVpnRules() {
+        val setup = IntranetConfig("10.77.0.1", emptyMap(), emptyList(), emptyList())
+            .toScript("wlan2", "/data/intranet")
+
+        assertTrue("ip rule add to 10.77.0.0/24 iif lo lookup 97 prio 10500" in setup)
+        assertTrue("ip rule del prio 10500" in intranetTeardownScript(null, "10.77.0.1", "/data/intranet"))
+    }
 }

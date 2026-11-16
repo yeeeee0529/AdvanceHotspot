@@ -10,6 +10,10 @@ private const val GATEWAY_HOST_LABEL = "hotspot"
 
 /** dnsmasq 實際監聽的 DHCP 埠；67 埠被系統的 DHCP 服務佔用，無法共用。 */
 private const val DHCP_ALTERNATE_PORT = 1067
+private const val DHCP_SERVER_PORT = 67
+
+/** 等待過時的連線追蹤項目消失的秒數上限；略長於核心對未回覆 UDP 的 30 秒逾時。 */
+private const val CONNTRACK_EXPIRY_WAIT_SECONDS = 45
 private const val LEASE_TIME = "1h"
 private const val DNSMASQ = "/system/bin/dnsmasq"
 
@@ -20,6 +24,14 @@ private const val CHAIN_OUTPUT = "ah_dhcp_out"
 /** netd 的 local_network 路由表，轉送回熱點裝置的封包靠它找到路。 */
 private const val LOCAL_NETWORK_TABLE = 97
 private const val NETD_TABLE_OFFSET = 1000
+
+/**
+ * 讓手機自己送往內網的封包走 local_network 表的規則優先序。
+ *
+ * 必須排在 netd 的 VPN 規則（13000）之前：VPN 連線時那條規則會把 root 行程的封包導向 VPN，
+ * dnsmasq 的 DHCP 與 DNS 回覆就會從 VPN 介面送出，裝置永遠收不到。
+ */
+private const val RULE_PRIORITY_LOCAL_OUTPUT = 10500
 
 private val IFACE_PATTERN = Regex("[A-Za-z0-9_.-]{1,15}")
 private val MAC_PATTERN = Regex("[0-9a-f]{2}(:[0-9a-f]{2}){5}")
@@ -159,6 +171,10 @@ fun IntranetConfig.toScript(iface: String, directory: String): String {
             "ip route replace $subnet dev $iface " +
                 "table \$(($NETD_TABLE_OFFSET + \$(cat /sys/class/net/$iface/ifindex))) || rc=1",
         )
+        appendLine(DELETE_LOCAL_OUTPUT_RULE)
+        appendLine(
+            "ip rule add to $subnet iif lo lookup $LOCAL_NETWORK_TABLE prio $RULE_PRIORITY_LOCAL_OUTPUT || rc=1",
+        )
         appendLine("iptables-restore -w --noflush <<'AH_RULES' || rc=1")
         appendLine("*nat")
         appendLine(":$CHAIN_PREROUTING - [0:0]")
@@ -188,6 +204,7 @@ fun IntranetConfig.toScript(iface: String, directory: String): String {
                     "iptables -w -t $table -I $parent 1 -j $chain || rc=1",
             )
         }
+        appendConntrackExpiry(iface, staleReplyPort = DHCP_SERVER_PORT)
         append(ENSURE_FUNCTION)
         appendLine("ah_ensure dhcp '$dhcpCommand' || rc=1")
         appendLine("ah_ensure dns '$dnsCommand' || rc=1")
@@ -210,6 +227,8 @@ fun intranetTeardownScript(iface: String?, gateway: String, directory: String): 
             appendLine("iptables -w -t $table -F $chain 2>/dev/null")
             appendLine("iptables -w -t $table -X $chain 2>/dev/null")
         }
+        appendLine(DELETE_LOCAL_OUTPUT_RULE)
+        if (iface != null) appendConntrackExpiry(iface, staleReplyPort = DHCP_ALTERNATE_PORT)
         if (iface != null && isValidGateway(gateway)) {
             requireMatch(IFACE_PATTERN, iface)
             val subnet = subnetOf(gateway)
@@ -223,6 +242,9 @@ fun intranetTeardownScript(iface: String?, gateway: String, directory: String): 
         appendLine("true")
     }
 }
+
+private const val DELETE_LOCAL_OUTPUT_RULE =
+    "while ip rule del prio $RULE_PRIORITY_LOCAL_OUTPUT 2>/dev/null; do :; done"
 
 private val HOOKS = listOf(
     Triple("nat", "PREROUTING", CHAIN_PREROUTING),
@@ -257,6 +279,40 @@ private val ENSURE_FUNCTION = """
     }
 
 """.trimIndent() + "\n"
+
+/**
+ * 讓方向已經過時的 DHCP 廣播連線追蹤項目失效。
+ *
+ * NAT 規則只在一條連線的第一個封包上生效。所有裝置的 DHCP 廣播都是同一組
+ * `0.0.0.0:68 -> 255.255.255.255:67`，共用同一個連線追蹤項目；只要有裝置持續重試，
+ * 這個項目就不會逾時，規則變動後封包仍然照舊的方向走。手機上沒有可以刪除項目的工具，
+ * 所以暫時在 raw 表丟棄 DHCP 請求（raw 表在連線追蹤之前，項目不再被更新），等它逾時後再放行。
+ *
+ * @param staleReplyPort 過時項目的回覆方向來源埠：67 代表尚未轉向，替代埠代表仍在轉向。
+ */
+private fun StringBuilder.appendConntrackExpiry(iface: String, staleReplyPort: Int) {
+    requireMatch(IFACE_PATTERN, iface)
+    val rule = "PREROUTING -i $iface -p udp --dport $DHCP_SERVER_PORT -j DROP"
+    appendLine(
+        "ah_stale() { grep -q 'dst=255.255.255.255 sport=68 dport=$DHCP_SERVER_PORT " +
+            ".*sport=$staleReplyPort dport=68' /proc/net/nf_conntrack 2>/dev/null; }",
+    )
+    appendLine("if ah_stale; then")
+    appendLine("  iptables -w -t raw -C $rule 2>/dev/null || {")
+    appendLine("    iptables -w -t raw -I $rule")
+    // 在背景等待，不拖住後續的規則套用；忽略 HUP，root shell 關閉時仍會把丟棄規則拿掉
+    appendLine("    (")
+    appendLine("      trap '' HUP")
+    appendLine("      n=0")
+    appendLine("      while [ \$n -lt $CONNTRACK_EXPIRY_WAIT_SECONDS ] && ah_stale; do sleep 1; n=\$((n + 1)); done")
+    appendLine("      iptables -w -t raw -D $rule")
+    appendLine("    ) >/dev/null 2>&1 &")
+    appendLine("  }")
+    appendLine("else")
+    // 保險：上一次的等待若沒有收尾，這裡把丟棄規則拿掉
+    appendLine("  iptables -w -t raw -D $rule 2>/dev/null")
+    appendLine("fi")
+}
 
 private fun StringBuilder.appendFile(path: String, lines: List<String>) {
     appendLine("cat > $path <<'AH_FILE'")
