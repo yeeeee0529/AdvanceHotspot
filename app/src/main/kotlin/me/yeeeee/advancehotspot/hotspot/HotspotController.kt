@@ -4,6 +4,7 @@ import android.util.Base64
 import kotlinx.coroutines.delay
 import me.yeeeee.advancehotspot.helper.HelperMain
 import me.yeeeee.advancehotspot.root.RootShell
+import me.yeeeee.advancehotspot.routing.Downstream
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -23,8 +24,18 @@ class HotspotController(private val apkPath: String) {
         return parseConfig(invoke("set-config", encode(config.toJson())).getJSONObject("config"))
     }
 
-    suspend fun clients(): ClientSnapshot {
-        val json = invoke("clients")
+    suspend fun clients(): ClientSnapshot = parseClientSnapshot(invoke("clients"))
+
+    /** 啟動 helper 監看模式的完整指令；會持續執行直到 shell 關閉。 */
+    fun watchCommand(): String = helperCommand("watch")
+
+    /** 解析監看模式輸出的一行；不是事件行時回傳 null。 */
+    fun parseWatchEvent(line: String): ClientSnapshot? {
+        if (!line.startsWith(HelperMain.EVENT_PREFIX)) return null
+        return runCatching { parseClientSnapshot(JSONObject(line.removePrefix(HelperMain.EVENT_PREFIX))) }.getOrNull()
+    }
+
+    private fun parseClientSnapshot(json: JSONObject): ClientSnapshot {
         val clients = json.getJSONArray("clients")
         return ClientSnapshot(
             clients = List(clients.length()) { index ->
@@ -36,6 +47,9 @@ class HotspotController(private val apkPath: String) {
                 )
             },
             blockedMacs = json.getJSONArray("blocked").toStringList(),
+            downstream = json.optJSONObject("downstream")?.let {
+                Downstream(it.getString("iface"), it.getString("address"), it.getInt("prefixLength"))
+            },
         )
     }
 
@@ -65,10 +79,7 @@ class HotspotController(private val apkPath: String) {
     }
 
     private suspend fun invoke(vararg args: String): JSONObject {
-        // 參數只會是固定指令或 URL-safe base64，放進單引號內不需要再跳脫
-        val helperCommand = "CLASSPATH=$apkPath app_process /system/bin " +
-            "${HelperMain::class.java.name} ${args.joinToString(" ")}"
-        val result = RootShell.run("su $SHELL_UID -c '$helperCommand'")
+        val result = RootShell.run(helperCommand(*args))
         val line = result.stdout.lastOrNull { it.startsWith(HelperMain.RESPONSE_PREFIX) }
             ?: throw HotspotException(
                 "Helper produced no response (exit ${result.exitCode}): " +
@@ -80,6 +91,11 @@ class HotspotController(private val apkPath: String) {
         }
         return response
     }
+
+    /** 參數只會是固定指令或 URL-safe base64，放進單引號內不需要再跳脫。 */
+    private fun helperCommand(vararg args: String): String =
+        "su $SHELL_UID -c 'CLASSPATH=$apkPath app_process /system/bin " +
+            "${HelperMain::class.java.name} ${args.joinToString(" ")}'"
 
     private fun parseStatus(json: JSONObject): HotspotStatus = HotspotStatus(
         apState = json.getInt("apState"),

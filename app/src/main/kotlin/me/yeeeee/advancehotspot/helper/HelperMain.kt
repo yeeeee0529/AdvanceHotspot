@@ -24,13 +24,24 @@ import kotlin.system.exitProcess
 @SuppressLint("PrivateApi")
 object HelperMain {
     const val RESPONSE_PREFIX = "AHRESULT:"
+
+    /** `watch` 指令每次狀態變動輸出一行，以此為前綴。 */
+    const val EVENT_PREFIX = "AHEVENT:"
     private const val SHELL_PACKAGE = "com.android.shell"
 
     @JvmStatic
     fun main(args: Array<String>) {
         val response = try {
+            // 一般 app 不該呼叫，但這個行程沒有框架代為建立主執行緒的 Looper
+            @Suppress("DEPRECATION")
             if (Looper.getMainLooper() == null) Looper.prepareMainLooper()
             val bridge = SoftApBridge(createShellContext())
+            if (args.firstOrNull() == "watch") {
+                bridge.watch { event ->
+                    println(EVENT_PREFIX + event)
+                    System.out.flush()
+                }
+            }
             val result = when (val command = args.firstOrNull()) {
                 "status" -> bridge.status()
                 "set-config" -> bridge.applyConfig(decodeJsonArgument(args))

@@ -1,5 +1,10 @@
 package me.yeeeee.advancehotspot.ui.devices
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,12 +15,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +43,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import me.yeeeee.advancehotspot.R
+import me.yeeeee.advancehotspot.routing.DevicePolicy
+import me.yeeeee.advancehotspot.routing.Egress
+import me.yeeeee.advancehotspot.routing.ResolvedEgress
 
 private const val REFRESH_INTERVAL_MS = 4000L
 
@@ -42,6 +53,8 @@ private const val REFRESH_INTERVAL_MS = 4000L
 fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var renamingMac by rememberSaveable { mutableStateOf<String?>(null) }
+    // 前景服務的通知需要這個權限才看得到；使用者拒絕時服務仍會執行
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     // 只在畫面位於前景時輪詢，每次輪詢都要啟動一個 helper 行程
     var resumed by remember { mutableStateOf(false) }
@@ -86,6 +99,16 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
             }
         }
         item {
+            RoutingCard(
+                state = state,
+                onToggle = { enabled ->
+                    if (enabled) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    viewModel.setRoutingEnabled(enabled)
+                },
+                onDefaultEgress = viewModel::setDefaultEgress,
+            )
+        }
+        item {
             Text(
                 stringResource(R.string.devices_connected_title, state.connected.size),
                 style = MaterialTheme.typography.titleMedium,
@@ -107,7 +130,33 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
                 blockLabel = stringResource(R.string.action_block),
                 onRename = { renamingMac = device.mac },
                 onToggleBlock = { viewModel.setBlocked(device.mac, true) },
+                routing = if (state.routingEnabled) {
+                    DeviceRouting(state.defaultEgress, state.resolvedEgress) { viewModel.setPolicy(device.mac, it) }
+                } else {
+                    null
+                },
             )
+        }
+        if (state.routingEnabled && state.offline.isNotEmpty()) {
+            item {
+                Text(
+                    stringResource(R.string.devices_offline_title, state.offline.size),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            items(state.offline, key = { "offline-${it.mac}" }) { device ->
+                DeviceCard(
+                    device = device,
+                    enabled = !state.busy,
+                    blockLabel = stringResource(R.string.action_block),
+                    onRename = { renamingMac = device.mac },
+                    onToggleBlock = { viewModel.setBlocked(device.mac, true) },
+                    routing = DeviceRouting(state.defaultEgress, state.resolvedEgress) {
+                        viewModel.setPolicy(device.mac, it)
+                    },
+                )
+            }
         }
         if (state.blocked.isNotEmpty()) {
             item {
@@ -130,7 +179,7 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
     }
 
     renamingMac?.let { mac ->
-        val device = (state.connected + state.blocked).firstOrNull { it.mac == mac }
+        val device = (state.connected + state.offline + state.blocked).firstOrNull { it.mac == mac }
         RenameDialog(
             initial = device?.nickname.orEmpty(),
             onConfirm = { nickname ->
@@ -149,6 +198,7 @@ private fun DeviceCard(
     blockLabel: String,
     onRename: () -> Unit,
     onToggleBlock: () -> Unit,
+    routing: DeviceRouting? = null,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 4.dp)) {
@@ -170,12 +220,131 @@ private fun DeviceCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
+            if (routing != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
+                    Text(
+                        stringResource(R.string.device_internet),
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = device.policy.internet,
+                        onCheckedChange = { routing.onPolicy(device.policy.copy(internet = it)) },
+                    )
+                }
+                if (device.policy.internet) {
+                    EgressChips(
+                        choices = DEVICE_EGRESS_CHOICES,
+                        selected = device.policy.egress,
+                        onSelect = { routing.onPolicy(device.policy.copy(egress = it)) },
+                    )
+                    val effective = if (device.policy.egress == Egress.INHERIT) routing.defaultEgress else device.policy.egress
+                    EgressStatus(effective, routing.resolved)
+                }
+            }
             Row(Modifier.align(Alignment.End)) {
                 TextButton(onClick = onRename) { Text(stringResource(R.string.action_rename)) }
                 TextButton(onClick = onToggleBlock, enabled = enabled) { Text(blockLabel) }
             }
         }
     }
+}
+
+/** 路由控制啟用時，裝置卡片額外需要的資料與回呼。 */
+private class DeviceRouting(
+    val defaultEgress: Egress,
+    val resolved: Map<Egress, ResolvedEgress>,
+    val onPolicy: (DevicePolicy) -> Unit,
+)
+
+private val DEFAULT_EGRESS_CHOICES = listOf(Egress.SYSTEM, Egress.WIFI, Egress.CELLULAR, Egress.VPN, Egress.ETHERNET)
+private val DEVICE_EGRESS_CHOICES = listOf(Egress.INHERIT) + DEFAULT_EGRESS_CHOICES
+
+@StringRes
+private fun Egress.labelRes(): Int = when (this) {
+    Egress.INHERIT -> R.string.egress_inherit
+    Egress.SYSTEM -> R.string.egress_system
+    Egress.WIFI -> R.string.egress_wifi
+    Egress.CELLULAR -> R.string.egress_cellular
+    Egress.VPN -> R.string.egress_vpn
+    Egress.ETHERNET -> R.string.egress_ethernet
+}
+
+@Composable
+private fun RoutingCard(state: DevicesUiState, onToggle: (Boolean) -> Unit, onDefaultEgress: (Egress) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.routing_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(checked = state.routingEnabled, onCheckedChange = onToggle)
+            }
+            Text(
+                stringResource(R.string.routing_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (state.routingEnabled) {
+                Text(stringResource(R.string.routing_default_egress), style = MaterialTheme.typography.labelLarge)
+                EgressChips(DEFAULT_EGRESS_CHOICES, state.defaultEgress, onDefaultEgress)
+                EgressStatus(state.defaultEgress, state.resolvedEgress)
+
+                val downstream = state.routingStatus.downstream
+                Text(
+                    if (downstream == null) {
+                        stringResource(R.string.routing_inactive)
+                    } else {
+                        stringResource(R.string.routing_active, downstream.iface, downstream.subnet)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                state.routingStatus.error?.let {
+                    Text(
+                        stringResource(R.string.routing_error, it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EgressChips(choices: List<Egress>, selected: Egress, onSelect: (Egress) -> Unit) {
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        choices.forEach { egress ->
+            FilterChip(
+                selected = egress == selected,
+                onClick = { onSelect(egress) },
+                label = { Text(stringResource(egress.labelRes())) },
+            )
+        }
+    }
+}
+
+/** 顯示指定出口目前對應的介面；跟隨系統時沒有可顯示的資訊。 */
+@Composable
+private fun EgressStatus(egress: Egress, resolved: Map<Egress, ResolvedEgress>) {
+    if (egress == Egress.SYSTEM || egress == Egress.INHERIT) return
+    val label = stringResource(egress.labelRes())
+    val target = resolved[egress]
+    Text(
+        if (target != null) {
+            stringResource(R.string.egress_status_online, label, target.iface)
+        } else {
+            stringResource(R.string.egress_status_offline, label)
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = if (target != null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+    )
 }
 
 @Composable

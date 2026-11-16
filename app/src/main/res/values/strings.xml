@@ -75,9 +75,29 @@
     <string name="action_unblock">解除封鎖</string>
     <string name="devices_connected_title">已連線（%1$d）</string>
     <string name="devices_connected_empty">目前沒有裝置連線。</string>
+    <string name="devices_offline_title">未連線但有設定（%1$d）</string>
     <string name="devices_blocked_title">已封鎖（%1$d）</string>
     <string name="device_unknown_name">未知裝置</string>
     <string name="rename_title">重新命名裝置</string>
     <string name="rename_label">暱稱</string>
     <string name="rename_hint">留空會改回顯示裝置自己回報的名稱。</string>
+
+    <string name="routing_notification_channel">路由控制</string>
+    <string name="routing_notification_title">每裝置路由控制執行中</string>
+    <string name="routing_notification_text">正在依設定管理熱點裝置的聯網與出口。</string>
+    <string name="routing_title">每裝置路由控制</string>
+    <string name="routing_description">啟用後可個別設定裝置能否上網與從哪個網路出去。指定出口斷線時，該裝置會直接斷網，不會改走其他網路。</string>
+    <string name="routing_default_egress">預設出口</string>
+    <string name="routing_inactive">熱點未開啟，規則會在熱點開啟後套用。</string>
+    <string name="routing_active">已套用於 %1$s（%2$s）</string>
+    <string name="routing_error">規則套用失敗：%1$s</string>
+    <string name="device_internet">允許上網</string>
+    <string name="egress_inherit">預設</string>
+    <string name="egress_system">跟隨系統</string>
+    <string name="egress_wifi">Wi-Fi</string>
+    <string name="egress_cellular">行動網路</string>
+    <string name="egress_vpn">VPN</string>
+    <string name="egress_ethernet">乙太網路</string>
+    <string name="egress_status_online">%1$s 經由 %2$s</string>
+    <string name="egress_status_offline">%1$s 未連線，已斷網</string>
 </resources>

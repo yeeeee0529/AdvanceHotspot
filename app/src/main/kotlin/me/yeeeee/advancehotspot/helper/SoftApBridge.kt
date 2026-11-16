@@ -10,6 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.reflect.Proxy
 import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
@@ -75,14 +76,65 @@ class SoftApBridge(context: Context) {
         return JSONObject().put("config", configToJson(currentConfig()))
     }
 
-    /** 列出目前連線的裝置與封鎖清單。 */
+    /** 列出目前連線的裝置、熱點介面與封鎖清單。 */
     fun clients(): JSONObject {
+        val tethering = collectTetheringSnapshot()
+        return clientsJson(collectCallbackSnapshot().clientMacs, tethering.clients, tethering.interfaces)
+    }
+
+    /**
+     * 持續監看連線裝置與熱點介面，每次變動就把完整狀態交給 [emit]；這個方法不會返回。
+     *
+     * 讓背景服務不必反覆啟動行程輪詢。
+     */
+    fun watch(emit: (JSONObject) -> Unit): Nothing {
+        val lock = Any()
+        var wifiMacs = emptyList<String>()
+        var tetheredClients: Collection<*> = emptyList<Any>()
+        var interfaces = emptyList<String>()
+        fun publish() = emit(clientsJson(wifiMacs, tetheredClients, interfaces))
+
+        val softApCallbackClass = Class.forName(SOFT_AP_CALLBACK_CLASS)
+        val softApCallback = proxyOf(softApCallbackClass) { name, args ->
+            if (name == "onConnectedClientsChanged") {
+                synchronized(lock) {
+                    wifiMacs = parseWifiClientMacs(args.last())
+                    publish()
+                }
+            }
+        }
+        wifiManager.javaClass.getMethod("registerSoftApCallback", Executor::class.java, softApCallbackClass)
+            .invoke(wifiManager, directExecutor, softApCallback)
+
+        val tetheringCallbackClass = Class.forName(TETHERING_CALLBACK_CLASS)
+        val tetheringCallback = proxyOf(tetheringCallbackClass) { name, args ->
+            synchronized(lock) {
+                when (name) {
+                    "onClientsChanged" -> tetheredClients = args[0] as Collection<*>
+                    "onTetheredInterfacesChanged" -> interfaces = parseInterfaceNames(args[0])
+                    else -> return@proxyOf
+                }
+                publish()
+            }
+        }
+        tetheringManager.javaClass
+            .getMethod("registerTetheringEventCallback", Executor::class.java, tetheringCallbackClass)
+            .invoke(tetheringManager, directExecutor, tetheringCallback)
+
+        // 父行程關閉管線時 stdin 會讀到 EOF，藉此跟著結束，不留下孤兒行程
+        while (System.`in`.read() != -1) {
+            // 輸入內容本身沒有意義，只等待 EOF
+        }
+        kotlin.system.exitProcess(0)
+    }
+
+    private fun clientsJson(wifiMacs: List<String>, tetheredClients: Collection<*>, interfaces: List<String>): JSONObject {
         val byMac = LinkedHashMap<String, JSONObject>()
         // 先放 Wi-Fi 層已連上的裝置，尚未取得 DHCP 租約的裝置也會出現在清單中
-        for (mac in collectCallbackSnapshot().clientMacs) {
+        for (mac in wifiMacs) {
             byMac[mac] = JSONObject().put("mac", mac).put("ip", "").put("hostname", "")
         }
-        for (client in collectTetheredClients()) {
+        for (client in tetheredClients) {
             val mac = client?.call("getMacAddress").toString()
             val entry = byMac.getOrPut(mac) { JSONObject().put("mac", mac).put("ip", "").put("hostname", "") }
             for (addressInfo in client?.call("getAddresses") as List<*>) {
@@ -93,8 +145,26 @@ class SoftApBridge(context: Context) {
         }
         return JSONObject()
             .put("clients", JSONArray(byMac.values))
+            .put("downstream", interfaces.firstNotNullOfOrNull(::downstreamJson) ?: JSONObject.NULL)
             .put("blocked", JSONArray(blockedMacs(currentConfig())))
     }
+
+    /** 回傳介面的 IPv4 位址與前綴長度；介面不存在或沒有 IPv4 時回傳 null。 */
+    private fun downstreamJson(iface: String): JSONObject? {
+        val address = runCatching { NetworkInterface.getByName(iface) }.getOrNull()
+            ?.interfaceAddresses?.firstOrNull { it.address is Inet4Address } ?: return null
+        return JSONObject()
+            .put("iface", iface)
+            .put("address", address.address.hostAddress)
+            .put("prefixLength", address.networkPrefixLength.toInt())
+    }
+
+    /** 新舊版 callback 分別傳入 `TetheringInterface` 集合與介面名稱清單，兩種都接受。 */
+    private fun parseInterfaceNames(value: Any?): List<String> = (value as? Collection<*>).orEmpty()
+        .mapNotNull { if (it is String) it else it?.call("getInterface") as String? }
+
+    private fun parseWifiClientMacs(value: Any?): List<String> = (value as? List<*>).orEmpty()
+        .mapNotNull { it?.call("getMacAddress")?.toString() }
 
     /** 以新的清單取代封鎖名單；熱點開啟中會立即踢除被封鎖的裝置，不需要重新啟動。 */
     fun setBlocked(json: JSONObject): JSONObject {
@@ -161,15 +231,22 @@ class SoftApBridge(context: Context) {
     private fun blockedMacs(config: Any): List<String> =
         (config.call("getBlockedClientList") as List<*>).map { it.toString() }
 
-    /** 向 tethering 服務取得已連線裝置（含 DHCP 位址與主機名稱）；註冊後系統會立即回報一次。 */
-    private fun collectTetheredClients(): Collection<*> {
-        val callbackClass = Class.forName("android.net.TetheringManager\$TetheringEventCallback")
+    private class TetheringSnapshot(val clients: Collection<*>, val interfaces: List<String>)
+
+    /** 向 tethering 服務取得已連線裝置（含 DHCP 位址與主機名稱）與熱點介面；註冊後系統會立即回報一次。 */
+    private fun collectTetheringSnapshot(): TetheringSnapshot {
+        val callbackClass = Class.forName(TETHERING_CALLBACK_CLASS)
         val latch = CountDownLatch(1)
         var clients: Collection<*> = emptyList<Any>()
+        var interfaces = emptyList<String>()
         val callback = proxyOf(callbackClass) { name, args ->
-            if (name == "onClientsChanged") {
-                clients = args[0] as Collection<*>
-                latch.countDown()
+            when (name) {
+                "onTetheredInterfacesChanged" -> interfaces = parseInterfaceNames(args[0])
+                // 系統依固定順序回報，裝置清單排在介面之後，收到即代表資料齊全
+                "onClientsChanged" -> {
+                    clients = args[0] as Collection<*>
+                    latch.countDown()
+                }
             }
         }
         tetheringManager.javaClass
@@ -181,7 +258,7 @@ class SoftApBridge(context: Context) {
             tetheringManager.javaClass.getMethod("unregisterTetheringEventCallback", callbackClass)
                 .invoke(tetheringManager, callback)
         }
-        return clients
+        return TetheringSnapshot(clients, interfaces)
     }
 
     private fun capabilityToJson(capability: Any): JSONObject {
@@ -204,7 +281,7 @@ class SoftApBridge(context: Context) {
 
     /** 註冊 SoftAP callback 後系統會立即回報目前狀態，收齊後即取消註冊。 */
     private fun collectCallbackSnapshot(): CallbackSnapshot {
-        val callbackClass = Class.forName("android.net.wifi.WifiManager\$SoftApCallback")
+        val callbackClass = Class.forName(SOFT_AP_CALLBACK_CLASS)
         val capabilityLatch = CountDownLatch(1)
         var capability: Any? = null
         var frequencies = emptyList<Int>()
@@ -218,9 +295,7 @@ class SoftApBridge(context: Context) {
                 "onInfoChanged" -> (args[0] as? List<*>)?.let { infos ->
                     frequencies = infos.mapNotNull { it?.call("getFrequency") as Int? }
                 }
-                "onConnectedClientsChanged" -> (args.last() as? List<*>)?.let { clients ->
-                    clientMacs = clients.mapNotNull { it?.call("getMacAddress")?.toString() }
-                }
+                "onConnectedClientsChanged" -> clientMacs = parseWifiClientMacs(args.last())
             }
         }
         wifiManager.javaClass.getMethod("registerSoftApCallback", Executor::class.java, callbackClass)
@@ -236,6 +311,8 @@ class SoftApBridge(context: Context) {
 
     private companion object {
         const val CONFIG_CLASS = "android.net.wifi.SoftApConfiguration"
+        const val SOFT_AP_CALLBACK_CLASS = "android.net.wifi.WifiManager\$SoftApCallback"
+        const val TETHERING_CALLBACK_CLASS = "android.net.TetheringManager\$TetheringEventCallback"
         const val TETHERING_WIFI = 0
         const val START_TIMEOUT_SECONDS = 15L
         const val CALLBACK_TIMEOUT_SECONDS = 3L

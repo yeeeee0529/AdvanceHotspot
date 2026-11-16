@@ -1,5 +1,7 @@
 package me.yeeeee.advancehotspot.hotspot
 
+import me.yeeeee.advancehotspot.routing.Downstream
+
 /** 對應 `SoftApConfiguration.SECURITY_TYPE_*`。 */
 object SecurityType {
     const val OPEN = 0
@@ -74,6 +76,8 @@ data class ConnectedClient(
 data class ClientSnapshot(
     val clients: List<ConnectedClient>,
     val blockedMacs: List<String>,
+    /** 熱點介面；熱點未開啟時為 null。 */
+    val downstream: Downstream?,
 )
 
 enum class ConfigError {

@@ -47,6 +47,7 @@ KernelSU does not prompt for root. Open the KernelSU manager, enable superuser f
 | `app/src/main/kotlin/.../helper` | Command-line helper run with `app_process` as the shell user; calls hidden SoftAP and tethering APIs |
 | `app/src/main/kotlin/.../hotspot` | Hotspot model, validation, and the controller that invokes the helper |
 | `app/src/main/kotlin/.../devices` | Per-device annotations stored by MAC address |
+| `app/src/main/kotlin/.../routing` | Routing policy, rule script generator, egress resolution and the foreground service |
 | `app/src/main/kotlin/.../system` | Device and network probing, command output parsers |
 | `app/src/main/kotlin/.../ui` | Jetpack Compose screens and view models |
 
@@ -56,6 +57,30 @@ Hidden SoftAP and tethering APIs verify that the caller's package name belongs t
 
 A forced channel takes effect even while the phone is connected to Wi-Fi on a different channel (verified on the Pixel 9 Pro XL). Saving while the hotspot is on restarts it, so connected devices drop briefly.
 
+## How per-device routing works
+
+Turn on "per-device routing" in the Devices tab. A foreground service then keeps a set of rules in sync with the connected devices and the phone's networks. It listens for client and network changes through a long-running helper process, so there is no polling.
+
+Each device has an internet switch and an egress: the global default, follow the system, Wi-Fi, mobile data, VPN or Ethernet. Egress is chosen by network type, not interface name, because a VPN interface can come back under a different name after reconnecting.
+
+For a device bound to an egress the service installs:
+
+- an `ip rule` that sends its traffic to that interface's routing table, followed by an `unreachable` rule
+- filter rules that accept only traffic leaving through that interface and drop everything else from the device
+- a DNAT rule that redirects its DNS queries to the egress network's DNS server, because the phone's own DNS forwarder would otherwise resolve them over the system upstream
+- IPv6 drop rules, because IPv6 cannot be steered to the chosen egress
+
+The kill switch is the filter rules: when the egress disappears the device is dropped entirely and never falls back to another network. The rules stay in the kernel if the service is killed.
+
+The service also removes the system's tethering BPF offload program from the hotspot interface. Offloaded connections bypass netfilter, so without this an existing connection would keep flowing after a device is blocked.
+
+Known limits:
+
+- Devices with a non-default policy have no IPv6 connectivity.
+- A device that uses its own encrypted DNS (DoH or DoT) is still routed through the chosen egress, but the DNS redirect does not apply to it.
+- Mobile data as an egress is untested, and carriers that provide IPv4 through 464XLAT are not handled yet.
+- Turning routing off does not re-attach the BPF offload program; it returns the next time the hotspot starts.
+
 ## Status
 
-Phases 1 to 3 are done. The app reads and writes SSID, security type, passphrase, band, channel, maximum client count, hidden SSID and auto shutdown, and turns the hotspot on and off. The Devices tab lists connected devices with hostname, IP address and MAC address, lets you give each a nickname, and blocks or unblocks a device by MAC address. Routing, intranet and rate limiting are not implemented yet. See the phase table in the [overview](../../README.md#status).
+Phases 1 to 4 are done. The app configures and toggles the hotspot, lists connected devices with nickname and MAC blocking, and controls each device's internet access and egress with a kill switch. Custom subnet, static leases, local DNS, client isolation, rate limiting and traffic statistics are not implemented yet. See the phase table in the [overview](../../README.md#status).
