@@ -1,216 +1,134 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
+
 package me.yeeeee.advancehotspot.ui.devices
 
-import android.Manifest
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.StringRes
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SegmentedListItem
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.delay
 import me.yeeeee.advancehotspot.R
-import me.yeeeee.advancehotspot.routing.DevicePolicy
 import me.yeeeee.advancehotspot.routing.Egress
-import me.yeeeee.advancehotspot.routing.ResolvedEgress
-import me.yeeeee.advancehotspot.traffic.TrafficLimit
 import me.yeeeee.advancehotspot.traffic.TrafficStats
 import me.yeeeee.advancehotspot.traffic.formatBytes
 import me.yeeeee.advancehotspot.traffic.formatRate
+import me.yeeeee.advancehotspot.ui.components.ChoiceFlow
+import me.yeeeee.advancehotspot.ui.components.DeviceAvatar
+import me.yeeeee.advancehotspot.ui.components.ErrorBanner
+import me.yeeeee.advancehotspot.ui.components.HintText
+import me.yeeeee.advancehotspot.ui.components.InfoItem
+import me.yeeeee.advancehotspot.ui.components.LoadingBox
+import me.yeeeee.advancehotspot.ui.components.MorphingBadge
+import me.yeeeee.advancehotspot.ui.components.ScreenScaffold
+import me.yeeeee.advancehotspot.ui.components.SectionHeader
+import me.yeeeee.advancehotspot.ui.components.SegmentSurface
+import me.yeeeee.advancehotspot.ui.components.SegmentedGroup
+import me.yeeeee.advancehotspot.ui.components.SwitchItem
 
-private const val REFRESH_INTERVAL_MS = 4000L
+/** 裝置在清單中的分類，決定詳細資料面板提供哪些操作。 */
+private enum class DeviceGroup { CONNECTED, OFFLINE, BLOCKED }
 
 @Composable
 fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var detailMac by rememberSaveable { mutableStateOf<String?>(null) }
     var renamingMac by rememberSaveable { mutableStateOf<String?>(null) }
     var staticIpMac by rememberSaveable { mutableStateOf<String?>(null) }
     var limitMac by rememberSaveable { mutableStateOf<String?>(null) }
-    // 前景服務的通知需要這個權限才看得到；使用者拒絕時服務仍會執行
-    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    DevicesPolling(viewModel)
 
-    // 只在畫面位於前景時輪詢，每次輪詢都要啟動一個 helper 行程
-    var resumed by remember { mutableStateOf(false) }
-    LifecycleResumeEffect(Unit) {
-        resumed = true
-        onPauseOrDispose { resumed = false }
-    }
-    LaunchedEffect(resumed) {
-        while (resumed) {
-            viewModel.refresh()
-            delay(REFRESH_INTERVAL_MS)
-        }
-    }
-
-    if (!state.loaded) {
-        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
-        return
-    }
-
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ScreenScaffold(
+        title = stringResource(R.string.tab_devices),
+        subtitle = if (state.loaded) stringResource(R.string.devices_subtitle, state.connected.size) else null,
+        modifier = modifier,
     ) {
-        state.failure?.let { failure ->
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    ),
-                ) {
-                    Text(
-                        stringResource(R.string.hotspot_operation_failed, failure),
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
+        if (!state.loaded) {
+            LoadingBox(Modifier.padding(top = 120.dp))
+            return@ScreenScaffold
         }
-        item {
-            RoutingCard(
-                state = state,
-                onToggle = { enabled ->
-                    if (enabled) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    viewModel.setRoutingEnabled(enabled)
-                },
-                onDefaultEgress = viewModel::setDefaultEgress,
-            )
-        }
-        item {
-            IntranetCard(state, viewModel::setIntranetEnabled, viewModel::setGateway)
-        }
-        item {
-            TrafficCard(state.trafficEnabled, viewModel::setTrafficEnabled, viewModel::resetTraffic)
-        }
-        item {
-            Text(
-                stringResource(R.string.devices_connected_title, state.connected.size),
-                style = MaterialTheme.typography.titleMedium,
-            )
-        }
+        state.failure?.let { ErrorBanner(stringResource(R.string.hotspot_operation_failed, it)) }
+
+        SectionHeader(stringResource(R.string.devices_connected_title, state.connected.size))
         if (state.connected.isEmpty()) {
-            item {
-                Text(
-                    stringResource(R.string.devices_connected_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        items(state.connected, key = { "connected-${it.mac}" }) { device ->
-            DeviceCard(
-                device = device,
-                enabled = !state.busy,
-                blockLabel = stringResource(R.string.action_block),
-                onRename = { renamingMac = device.mac },
-                onStaticIp = if (state.intranetEnabled) ({ staticIpMac = device.mac }) else null,
-                onToggleBlock = { viewModel.setBlocked(device.mac, true) },
-                routing = if (state.routingEnabled) {
-                    DeviceRouting(state.defaultEgress, state.resolvedEgress) { viewModel.setPolicy(device.mac, it) }
-                } else {
-                    null
-                },
-                traffic = if (state.trafficEnabled) {
-                    DeviceTraffic(state.traffic[device.mac] ?: TrafficStats()) { limitMac = device.mac }
-                } else {
-                    null
-                },
-            )
+            EmptyDevices()
+        } else {
+            DeviceGroupList(state, state.connected, DeviceGroup.CONNECTED) { detailMac = it }
         }
         if (state.routingEnabled && state.offline.isNotEmpty()) {
-            item {
-                Text(
-                    stringResource(R.string.devices_offline_title, state.offline.size),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-            items(state.offline, key = { "offline-${it.mac}" }) { device ->
-                DeviceCard(
-                    device = device,
-                    enabled = !state.busy,
-                    blockLabel = stringResource(R.string.action_block),
-                    onRename = { renamingMac = device.mac },
-                onStaticIp = if (state.intranetEnabled) ({ staticIpMac = device.mac }) else null,
-                    onToggleBlock = { viewModel.setBlocked(device.mac, true) },
-                    routing = DeviceRouting(state.defaultEgress, state.resolvedEgress) {
-                        viewModel.setPolicy(device.mac, it)
-                    },
-                )
-            }
+            SectionHeader(stringResource(R.string.devices_offline_title, state.offline.size))
+            DeviceGroupList(state, state.offline, DeviceGroup.OFFLINE) { detailMac = it }
         }
         if (state.blocked.isNotEmpty()) {
-            item {
-                Text(
-                    stringResource(R.string.devices_blocked_title, state.blocked.size),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-            items(state.blocked, key = { "blocked-${it.mac}" }) { device ->
-                DeviceCard(
-                    device = device,
-                    enabled = !state.busy,
-                    blockLabel = stringResource(R.string.action_unblock),
-                    onRename = { renamingMac = device.mac },
-                onStaticIp = if (state.intranetEnabled) ({ staticIpMac = device.mac }) else null,
-                    onToggleBlock = { viewModel.setBlocked(device.mac, false) },
-                )
-            }
+            SectionHeader(stringResource(R.string.devices_blocked_title, state.blocked.size))
+            DeviceGroupList(state, state.blocked, DeviceGroup.BLOCKED) { detailMac = it }
+        }
+    }
+
+    detailMac?.let { mac ->
+        val found = findDevice(state, mac)
+        if (found == null) {
+            // 裝置已從所有清單中消失（例如解除封鎖後尚未重新連線），關閉面板
+            LaunchedEffect(mac) { detailMac = null }
+        } else {
+            DeviceSheet(
+                state = state,
+                device = found.first,
+                group = found.second,
+                onDismiss = { detailMac = null },
+                onRename = { renamingMac = mac },
+                onStaticIp = { staticIpMac = mac },
+                onLimit = { limitMac = mac },
+                onToggleBlock = { blocked -> viewModel.setBlocked(mac, blocked) },
+                onPolicy = { viewModel.setPolicy(mac, it) },
+            )
         }
     }
 
     limitMac?.let { mac ->
         val device = state.connected.firstOrNull { it.mac == mac }
         LimitDialog(
-            initial = device?.limit ?: TrafficLimit(),
+            initial = device?.limit ?: me.yeeeee.advancehotspot.traffic.TrafficLimit(),
             onConfirm = { viewModel.setLimit(mac, it) },
             onDismiss = { limitMac = null },
         )
     }
 
     staticIpMac?.let { mac ->
-        val device = (state.connected + state.offline + state.blocked).firstOrNull { it.mac == mac }
+        val device = findDevice(state, mac)?.first
         TextInputDialog(
             title = stringResource(R.string.static_ip_title),
             label = stringResource(R.string.static_ip_label),
@@ -225,7 +143,7 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
     }
 
     renamingMac?.let { mac ->
-        val device = (state.connected + state.offline + state.blocked).firstOrNull { it.mac == mac }
+        val device = findDevice(state, mac)?.first
         TextInputDialog(
             title = stringResource(R.string.rename_title),
             label = stringResource(R.string.rename_label),
@@ -241,415 +159,284 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
     }
 }
 
+private fun findDevice(state: DevicesUiState, mac: String): Pair<DeviceItem, DeviceGroup>? =
+    state.connected.firstOrNull { it.mac == mac }?.let { it to DeviceGroup.CONNECTED }
+        ?: state.blocked.firstOrNull { it.mac == mac }?.let { it to DeviceGroup.BLOCKED }
+        ?: state.offline.firstOrNull { it.mac == mac }?.let { it to DeviceGroup.OFFLINE }
+
 @Composable
-private fun DeviceCard(
-    device: DeviceItem,
-    enabled: Boolean,
-    blockLabel: String,
-    onRename: () -> Unit,
-    onToggleBlock: () -> Unit,
-    routing: DeviceRouting? = null,
-    onStaticIp: (() -> Unit)? = null,
-    traffic: DeviceTraffic? = null,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 4.dp)) {
-            Text(
-                device.nickname ?: device.hostname ?: stringResource(R.string.device_unknown_name),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            if (device.nickname != null && device.hostname != null) {
-                Text(
-                    device.hostname,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun DeviceItem.displayName(): String = nickname ?: hostname ?: stringResource(R.string.device_unknown_name)
+
+@Composable
+private fun EmptyDevices() {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            Modifier.padding(vertical = 32.dp, horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            MorphingBadge(active = false, size = 72.dp, inactiveShape = MaterialShapes.Cookie6Sided) {
+                Icon(
+                    painterResource(R.drawable.ic_devices),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(32.dp),
                 )
             }
             Text(
-                listOfNotNull(device.ip, device.mac).joinToString("  ·  "),
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
+                stringResource(R.string.devices_connected_empty),
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
             )
-            device.localName?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+        }
+    }
+}
+
+@Composable
+private fun DeviceGroupList(
+    state: DevicesUiState,
+    devices: List<DeviceItem>,
+    group: DeviceGroup,
+    onOpen: (String) -> Unit,
+) {
+    SegmentedGroup {
+        devices.forEach { device ->
+            item(device.mac) { shapes ->
+                val traffic = if (state.trafficEnabled && group == DeviceGroup.CONNECTED) state.traffic[device.mac] else null
+                SegmentedListItem(
+                    onClick = { onOpen(device.mac) },
+                    shapes = shapes,
+                    leadingContent = {
+                        DeviceAvatar(device.mac, device.displayName(), dimmed = group != DeviceGroup.CONNECTED)
+                    },
+                    supportingContent = {
+                        Column {
+                            Text(
+                                listOfNotNull(device.ip ?: device.mac, device.localName).joinToString("  ·  "),
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            deviceBadges(state, device, group).takeIf { it.isNotEmpty() }?.let { badges ->
+                                Text(
+                                    badges.joinToString("  ·  "),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
+                        }
+                    },
+                    trailingContent = traffic?.let { { RateColumn(it) } },
+                ) {
+                    Text(device.displayName())
+                }
             }
-            device.staticIp?.let {
-                Text(
-                    stringResource(R.string.device_static_ip, it),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        }
+    }
+}
+
+/** 清單項目上的簡短狀態標籤，讓使用者不必展開也能看出特殊設定。 */
+@Composable
+private fun deviceBadges(state: DevicesUiState, device: DeviceItem, group: DeviceGroup): List<String> {
+    if (group == DeviceGroup.BLOCKED) return emptyList()
+    val badges = mutableListOf<String>()
+    if (state.routingEnabled) {
+        if (!device.policy.internet) {
+            badges += stringResource(R.string.device_internet_blocked)
+        } else if (device.policy.egress != Egress.INHERIT) {
+            badges += stringResource(device.policy.egress.labelRes())
+        }
+    }
+    if (state.intranetEnabled && device.staticIp != null) badges += stringResource(R.string.action_static_ip)
+    if (state.trafficEnabled && !device.limit.isUnlimited) badges += stringResource(R.string.device_limited)
+    return badges
+}
+
+@Composable
+private fun RateColumn(stats: TrafficStats) {
+    Column(horizontalAlignment = Alignment.End) {
+        Text("↓ " + formatRate(stats.downRate), style = MaterialTheme.typography.labelMedium)
+        Text(
+            "↑ " + formatRate(stats.upRate),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun DeviceSheet(
+    state: DevicesUiState,
+    device: DeviceItem,
+    group: DeviceGroup,
+    onDismiss: () -> Unit,
+    onRename: () -> Unit,
+    onStaticIp: () -> Unit,
+    onLimit: () -> Unit,
+    onToggleBlock: (Boolean) -> Unit,
+    onPolicy: (me.yeeeee.advancehotspot.routing.DevicePolicy) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp)) {
+                DeviceAvatar(device.mac, device.displayName(), size = 56.dp, dimmed = group != DeviceGroup.CONNECTED)
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(device.displayName(), style = MaterialTheme.typography.headlineSmallEmphasized)
+                    if (device.nickname != null && device.hostname != null) {
+                        Text(
+                            device.hostname,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
-            if (traffic != null) {
-                Text(
-                    stringResource(
-                        R.string.traffic_rates,
-                        formatRate(traffic.stats.upRate),
-                        formatRate(traffic.stats.downRate),
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                Text(
-                    stringResource(
-                        R.string.traffic_totals,
-                        formatBytes(traffic.stats.upBytes),
-                        formatBytes(traffic.stats.downBytes),
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+
+            if (state.trafficEnabled && group == DeviceGroup.CONNECTED) {
+                val stats = state.traffic[device.mac] ?: TrafficStats()
+                Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatTile(
+                        label = stringResource(R.string.traffic_download),
+                        rate = formatRate(stats.downRate),
+                        total = formatBytes(stats.downBytes),
+                        modifier = Modifier.weight(1f),
+                    )
+                    StatTile(
+                        label = stringResource(R.string.traffic_upload),
+                        rate = formatRate(stats.upRate),
+                        total = formatBytes(stats.upBytes),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
                 if (!device.limit.isUnlimited) {
-                    Text(
+                    HintText(
                         stringResource(
                             R.string.traffic_limit_summary,
                             limitLabel(device.limit.upKbit),
                             limitLabel(device.limit.downKbit),
                         ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Modifier.padding(start = 8.dp, top = 8.dp),
                     )
                 }
             }
-            if (routing != null) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
-                    Text(
-                        stringResource(R.string.device_internet),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Switch(
-                        checked = device.policy.internet,
-                        onCheckedChange = { routing.onPolicy(device.policy.copy(internet = it)) },
-                    )
-                }
-                if (device.policy.internet) {
-                    EgressChips(
-                        choices = DEVICE_EGRESS_CHOICES,
-                        selected = device.policy.egress,
-                        onSelect = { routing.onPolicy(device.policy.copy(egress = it)) },
-                    )
-                    val effective = if (device.policy.egress == Egress.INHERIT) routing.defaultEgress else device.policy.egress
-                    EgressStatus(effective, routing.resolved)
-                }
-            }
-            Row(Modifier.align(Alignment.End)) {
-                if (traffic != null) {
-                    TextButton(onClick = traffic.onLimit) { Text(stringResource(R.string.action_limit)) }
-                }
-                if (onStaticIp != null) {
-                    TextButton(onClick = onStaticIp) { Text(stringResource(R.string.action_static_ip)) }
-                }
-                TextButton(onClick = onRename) { Text(stringResource(R.string.action_rename)) }
-                TextButton(onClick = onToggleBlock, enabled = enabled) { Text(blockLabel) }
-            }
-        }
-    }
-}
 
-/** 路由控制啟用時，裝置卡片額外需要的資料與回呼。 */
-private class DeviceRouting(
-    val defaultEgress: Egress,
-    val resolved: Map<Egress, ResolvedEgress>,
-    val onPolicy: (DevicePolicy) -> Unit,
-)
-
-private val DEFAULT_EGRESS_CHOICES = listOf(Egress.SYSTEM, Egress.WIFI, Egress.CELLULAR, Egress.VPN, Egress.ETHERNET)
-private val DEVICE_EGRESS_CHOICES = listOf(Egress.INHERIT) + DEFAULT_EGRESS_CHOICES
-
-@StringRes
-private fun Egress.labelRes(): Int = when (this) {
-    Egress.INHERIT -> R.string.egress_inherit
-    Egress.SYSTEM -> R.string.egress_system
-    Egress.WIFI -> R.string.egress_wifi
-    Egress.CELLULAR -> R.string.egress_cellular
-    Egress.VPN -> R.string.egress_vpn
-    Egress.ETHERNET -> R.string.egress_ethernet
-}
-
-@Composable
-private fun RoutingCard(state: DevicesUiState, onToggle: (Boolean) -> Unit, onDefaultEgress: (Egress) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.routing_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(checked = state.routingEnabled, onCheckedChange = onToggle)
-            }
-            Text(
-                stringResource(R.string.routing_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (state.routingEnabled) {
-                Text(stringResource(R.string.routing_default_egress), style = MaterialTheme.typography.labelLarge)
-                EgressChips(DEFAULT_EGRESS_CHOICES, state.defaultEgress, onDefaultEgress)
-                EgressStatus(state.defaultEgress, state.resolvedEgress)
-
-                val downstream = state.routingStatus.downstream
-                Text(
-                    if (downstream == null) {
-                        stringResource(R.string.routing_inactive)
-                    } else {
-                        stringResource(R.string.routing_active, downstream.iface, downstream.subnet)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                state.routingStatus.error?.let {
-                    Text(
-                        stringResource(R.string.routing_error, it),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EgressChips(choices: List<Egress>, selected: Egress, onSelect: (Egress) -> Unit) {
-    Row(
-        modifier = Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        choices.forEach { egress ->
-            FilterChip(
-                selected = egress == selected,
-                onClick = { onSelect(egress) },
-                label = { Text(stringResource(egress.labelRes())) },
-            )
-        }
-    }
-}
-
-/** 顯示指定出口目前對應的介面；跟隨系統時沒有可顯示的資訊。 */
-@Composable
-private fun EgressStatus(egress: Egress, resolved: Map<Egress, ResolvedEgress>) {
-    if (egress == Egress.SYSTEM || egress == Egress.INHERIT) return
-    val label = stringResource(egress.labelRes())
-    val target = resolved[egress]
-    Text(
-        if (target != null) {
-            stringResource(R.string.egress_status_online, label, target.iface)
-        } else {
-            stringResource(R.string.egress_status_offline, label)
-        },
-        style = MaterialTheme.typography.bodySmall,
-        color = if (target != null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-    )
-}
-
-/** 流量功能啟用時，裝置卡片額外需要的資料與回呼。 */
-private class DeviceTraffic(val stats: TrafficStats, val onLimit: () -> Unit)
-
-/** 上限以 Mbps 顯示；0 代表不限制。 */
-@Composable
-private fun limitLabel(kbit: Int): String =
-    if (kbit == 0) stringResource(R.string.traffic_unlimited) else formatMbps(kbit) + " Mbps"
-
-private fun formatMbps(kbit: Int): String = (kbit / 1000.0).toBigDecimal().stripTrailingZeros().toPlainString()
-
-/** 把使用者輸入的 Mbps 轉成 kbit/s；空白代表不限制，無法解析或超出範圍時回傳 null。 */
-private fun parseMbps(text: String): Int? {
-    val trimmed = text.trim()
-    if (trimmed.isEmpty()) return 0
-    val mbps = trimmed.toDoubleOrNull() ?: return null
-    if (mbps < 0 || mbps > MAX_LIMIT_MBPS) return null
-    return (mbps * 1000).toInt()
-}
-
-private const val MAX_LIMIT_MBPS = 10_000.0
-
-@Composable
-private fun TrafficCard(enabled: Boolean, onToggle: (Boolean) -> Unit, onReset: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.traffic_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(checked = enabled, onCheckedChange = onToggle)
-            }
-            Text(
-                stringResource(R.string.traffic_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (enabled) {
-                TextButton(onClick = onReset, modifier = Modifier.align(Alignment.End)) {
-                    Text(stringResource(R.string.action_reset_traffic))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LimitDialog(initial: TrafficLimit, onConfirm: (TrafficLimit) -> Unit, onDismiss: () -> Unit) {
-    var upText by rememberSaveable { mutableStateOf(if (initial.upKbit == 0) "" else formatMbps(initial.upKbit)) }
-    var downText by rememberSaveable { mutableStateOf(if (initial.downKbit == 0) "" else formatMbps(initial.downKbit)) }
-    var invalid by rememberSaveable { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.limit_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for ((label, text, onChange) in listOf(
-                    Triple(R.string.limit_download, downText) { value: String -> downText = value },
-                    Triple(R.string.limit_upload, upText) { value: String -> upText = value },
-                )) {
-                    OutlinedTextField(
-                        value = text,
-                        onValueChange = {
-                            onChange(it)
-                            invalid = false
-                        },
-                        label = { Text(stringResource(label)) },
-                        placeholder = { Text(stringResource(R.string.traffic_unlimited)) },
-                        isError = invalid,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                    )
-                }
-                Text(
-                    stringResource(if (invalid) R.string.limit_error else R.string.limit_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (invalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val up = parseMbps(upText)
-                    val down = parseMbps(downText)
-                    if (up == null || down == null) {
-                        invalid = true
-                    } else {
-                        onConfirm(TrafficLimit(upKbit = up, downKbit = down))
-                        onDismiss()
+            if (state.routingEnabled && group != DeviceGroup.BLOCKED) {
+                SectionHeader(stringResource(R.string.routing_title))
+                SegmentedGroup {
+                    item("internet") { shapes ->
+                        SwitchItem(
+                            shapes = shapes,
+                            title = stringResource(R.string.device_internet),
+                            checked = device.policy.internet,
+                            onCheckedChange = { onPolicy(device.policy.copy(internet = it)) },
+                            icon = R.drawable.ic_public,
+                        )
                     }
-                },
+                    if (device.policy.internet) {
+                        item("egress") { shapes ->
+                            SegmentSurface(shapes) {
+                                Text(stringResource(R.string.device_egress), style = MaterialTheme.typography.labelLarge)
+                                ChoiceFlow(
+                                    options = DEVICE_EGRESS_CHOICES,
+                                    selected = device.policy.egress,
+                                    label = { stringResource(it.labelRes()) },
+                                    onSelect = { onPolicy(device.policy.copy(egress = it)) },
+                                )
+                                val effective = if (device.policy.egress == Egress.INHERIT) {
+                                    state.defaultEgress
+                                } else {
+                                    device.policy.egress
+                                }
+                                EgressStatus(effective, state.resolvedEgress)
+                            }
+                        }
+                    }
+                }
+            }
+
+            SectionHeader(stringResource(R.string.device_details))
+            SegmentedGroup {
+                device.ip?.let { ip ->
+                    item("ip") { shapes -> InfoItem(shapes, stringResource(R.string.device_ip), ip, monospace = true) }
+                }
+                item("mac") { shapes -> InfoItem(shapes, stringResource(R.string.device_mac), device.mac, monospace = true) }
+                device.localName?.let { name ->
+                    item("local") { shapes ->
+                        InfoItem(shapes, stringResource(R.string.device_local_name), name, monospace = true)
+                    }
+                }
+                device.staticIp?.let { ip ->
+                    item("static") { shapes ->
+                        InfoItem(shapes, stringResource(R.string.action_static_ip), ip, monospace = true)
+                    }
+                }
+            }
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.action_save))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-        },
-    )
-}
-
-@Composable
-private fun IntranetCard(state: DevicesUiState, onToggle: (Boolean) -> Unit, onGateway: (String) -> Boolean) {
-    var gatewayText by rememberSaveable(state.gateway) { mutableStateOf(state.gateway) }
-    var invalid by rememberSaveable { mutableStateOf(false) }
-
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.intranet_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(checked = state.intranetEnabled, onCheckedChange = onToggle)
-            }
-            Text(
-                stringResource(R.string.intranet_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (state.intranetEnabled) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = gatewayText,
-                        onValueChange = {
-                            gatewayText = it
-                            invalid = false
-                        },
-                        label = { Text(stringResource(R.string.intranet_gateway)) },
-                        isError = invalid,
-                        supportingText = {
-                            Text(
-                                stringResource(
-                                    if (invalid) R.string.intranet_gateway_error else R.string.intranet_gateway_hint,
-                                ),
-                            )
-                        },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(
-                        onClick = { invalid = !onGateway(gatewayText.trim()) },
-                        enabled = gatewayText.trim() != state.gateway,
-                    ) {
-                        Text(stringResource(R.string.action_apply))
-                    }
+                ActionButton(R.drawable.ic_edit, stringResource(R.string.action_rename), onRename)
+                if (state.intranetEnabled) {
+                    ActionButton(R.drawable.ic_pin, stringResource(R.string.action_static_ip), onStaticIp)
+                }
+                if (state.trafficEnabled && group == DeviceGroup.CONNECTED) {
+                    ActionButton(R.drawable.ic_speed, stringResource(R.string.action_limit), onLimit)
+                }
+                val blocked = group == DeviceGroup.BLOCKED
+                Button(
+                    onClick = { onToggleBlock(!blocked) },
+                    enabled = !state.busy,
+                    shapes = ButtonDefaults.shapes(),
+                    colors = if (blocked) {
+                        ButtonDefaults.buttonColors()
+                    } else {
+                        ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                        )
+                    },
+                ) {
+                    Icon(painterResource(R.drawable.ic_block), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(if (blocked) R.string.action_unblock else R.string.action_block))
                 }
             }
         }
     }
 }
 
-/**
- * 單一文字欄位的輸入對話框。
- *
- * @param onConfirm 回傳 false 代表輸入不合法，對話框會留著並顯示 [errorMessage]。
- */
 @Composable
-private fun TextInputDialog(
-    title: String,
-    label: String,
-    hint: String,
-    initial: String,
-    errorMessage: String?,
-    onConfirm: (String) -> Boolean,
-    onDismiss: () -> Unit,
-    keyboardType: KeyboardType = KeyboardType.Text,
-) {
-    var text by rememberSaveable { mutableStateOf(initial) }
-    var invalid by rememberSaveable { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = {
-                    text = it
-                    invalid = false
-                },
-                label = { Text(label) },
-                isError = invalid,
-                supportingText = { Text(if (invalid && errorMessage != null) errorMessage else hint) },
-                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { if (onConfirm(text)) onDismiss() else invalid = true }) {
-                Text(stringResource(R.string.action_save))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-        },
-    )
+private fun ActionButton(icon: Int, label: String, onClick: () -> Unit) {
+    FilledTonalButton(onClick = onClick, shapes = ButtonDefaults.shapes()) {
+        Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label)
+    }
+}
+
+@Composable
+private fun StatTile(label: String, rate: String, total: String, modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier,
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, style = MaterialTheme.typography.labelLarge)
+            Text(rate, style = MaterialTheme.typography.titleLargeEmphasized)
+            Text(stringResource(R.string.traffic_total_value, total), style = MaterialTheme.typography.bodySmall)
+        }
+    }
 }

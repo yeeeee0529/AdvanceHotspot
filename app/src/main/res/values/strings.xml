@@ -20,6 +20,7 @@
 
     <string name="tab_hotspot">熱點</string>
     <string name="tab_devices">裝置</string>
+    <string name="tab_network">網路</string>
     <string name="tab_environment">環境</string>
 
     <string name="action_save">儲存</string>
@@ -39,7 +40,6 @@
     <string name="hotspot_load_failed">無法讀取熱點狀態：%1$s</string>
     <string name="hotspot_operation_failed">操作失敗：%1$s</string>
 
-    <string name="settings_title">熱點設定</string>
     <string name="settings_ssid">網路名稱（SSID）</string>
     <string name="settings_security">加密方式</string>
     <string name="settings_passphrase">密碼</string>
@@ -56,7 +56,8 @@
     <string name="security_wpa3">WPA3</string>
     <string name="security_wpa2">WPA2</string>
     <string name="security_open">無密碼</string>
-    <string name="band_auto">自動（2.4／5 GHz）</string>
+    <string name="band_auto">自動</string>
+    <string name="band_auto_hint">同時使用 2.4 GHz 與 5 GHz，由系統選擇頻道。</string>
     <string name="band_2ghz">2.4 GHz</string>
     <string name="band_5ghz">5 GHz</string>
     <string name="band_6ghz">6 GHz</string>
@@ -110,7 +111,6 @@
     <string name="intranet_gateway">閘道位址</string>
     <string name="intranet_gateway_hint">網段固定為 /24，例如 10.77.0.1</string>
     <string name="intranet_gateway_error">請輸入私有網段的 IPv4 位址，例如 10.77.0.1</string>
-    <string name="device_static_ip">固定 IP：%1$s</string>
     <string name="static_ip_title">設定固定 IP</string>
     <string name="static_ip_label">IP 位址</string>
     <string name="static_ip_hint">必須在 %1$s.x 網段內；留空會取消固定 IP。</string>
@@ -121,7 +121,6 @@
     <string name="action_reset_traffic">重設累計用量</string>
     <string name="action_limit">限速</string>
     <string name="traffic_rates">↑ %1$s　↓ %2$s</string>
-    <string name="traffic_totals">累計　↑ %1$s　↓ %2$s</string>
     <string name="traffic_limit_summary">上限　↑ %1$s　↓ %2$s</string>
     <string name="traffic_unlimited">不限制</string>
     <string name="limit_title">設定速率上限</string>
@@ -129,4 +128,24 @@
     <string name="limit_upload">上傳上限（Mbps）</string>
     <string name="limit_hint">留空代表不限制，可輸入小數，例如 0.5。</string>
     <string name="limit_error">請輸入 0 到 10000 之間的數字。</string>
+    <string name="hotspot_turn_on">開啟熱點</string>
+    <string name="hotspot_turn_off">關閉熱點</string>
+    <string name="settings_section_network">名稱與加密</string>
+    <string name="settings_section_radio">頻段與頻道</string>
+    <string name="settings_section_advanced">進階</string>
+    <string name="devices_subtitle">%1$d 台已連線</string>
+    <string name="device_internet_blocked">禁止上網</string>
+    <string name="device_limited">已限速</string>
+    <string name="device_details">詳細資料</string>
+    <string name="device_ip">IP 位址</string>
+    <string name="device_mac">MAC 位址</string>
+    <string name="device_local_name">內網名稱</string>
+    <string name="device_egress">出口</string>
+    <string name="routing_switch">啟用路由控制</string>
+    <string name="intranet_switch">啟用自訂內網</string>
+    <string name="traffic_switch">啟用流量統計</string>
+    <string name="traffic_download">下載</string>
+    <string name="traffic_upload">上傳</string>
+    <string name="traffic_total_value">累計 %1$s</string>
+    <string name="traffic_total_rate">目前總速率</string>
 </resources>

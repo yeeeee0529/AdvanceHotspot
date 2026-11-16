@@ -31,3 +31,4 @@ Grant the app root in the KernelSU manager after the first install.
 | 4 | Per-device routing, kill switch, IPv6 leak protection | Done |
 | 5 | Intranet: custom subnet, static leases, local DNS, isolation | Done |
 | 6 | Per-device rate limit and traffic statistics | Done |
+| UI | Material 3 Expressive redesign with four tabs (Hotspot, Devices, Network, Environment) | Done |

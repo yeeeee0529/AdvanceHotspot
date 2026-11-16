@@ -1,28 +1,41 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package me.yeeeee.advancehotspot.ui.hotspot
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingToolbarDefaults
+import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ToggleButtonSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +43,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -46,6 +60,17 @@ import me.yeeeee.advancehotspot.hotspot.HotspotConfig
 import me.yeeeee.advancehotspot.hotspot.HotspotStatus
 import me.yeeeee.advancehotspot.hotspot.SecurityType
 import me.yeeeee.advancehotspot.hotspot.frequencyToChannel
+import me.yeeeee.advancehotspot.ui.components.ChoiceFlow
+import me.yeeeee.advancehotspot.ui.components.ConnectedChoiceGroup
+import me.yeeeee.advancehotspot.ui.components.ErrorBanner
+import me.yeeeee.advancehotspot.ui.components.HintText
+import me.yeeeee.advancehotspot.ui.components.LoadingBox
+import me.yeeeee.advancehotspot.ui.components.MorphingBadge
+import me.yeeeee.advancehotspot.ui.components.ScreenScaffold
+import me.yeeeee.advancehotspot.ui.components.SectionHeader
+import me.yeeeee.advancehotspot.ui.components.SegmentSurface
+import me.yeeeee.advancehotspot.ui.components.SegmentedGroup
+import me.yeeeee.advancehotspot.ui.components.SwitchItem
 
 private data class Choice(val value: Int, @param:StringRes val label: Int)
 
@@ -68,132 +93,154 @@ fun HotspotScreen(modifier: Modifier = Modifier, viewModel: HotspotViewModel = v
     val state by viewModel.state.collectAsStateWithLifecycle()
     val status = state.status
     val draft = state.draft
+    val showToolbar = state.isDirty && draft != null
 
-    if (status == null || draft == null) {
-        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (state.busy) {
-                CircularProgressIndicator()
-            } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                    Text(stringResource(R.string.hotspot_load_failed, state.failure.orEmpty()))
-                    TextButton(onClick = viewModel::refresh) { Text(stringResource(R.string.action_refresh)) }
-                }
+    ScreenScaffold(
+        title = stringResource(R.string.tab_hotspot),
+        modifier = modifier,
+        actions = {
+            IconButton(onClick = viewModel::refresh, enabled = !state.busy) {
+                Icon(painterResource(R.drawable.ic_refresh), contentDescription = stringResource(R.string.action_refresh))
             }
-        }
-        return
-    }
-
-    Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        },
+        floatingActionButton = {
+            AnimatedVisibility(
+                visible = showToolbar,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+            ) {
+                SaveToolbar(enabled = !state.busy, onDiscard = viewModel::discardChanges, onSave = viewModel::save)
+            }
+        },
+        // 浮動工具列出現時，讓最後的設定項目可以捲到工具列上方
+        bottomSpace = if (showToolbar) 112.dp else 24.dp,
     ) {
-        StatusCard(status, state.busy, viewModel::setEnabled, viewModel::refresh)
-        state.failure?.let { FailureCard(it) }
-        SettingsCard(
+        if (status == null || draft == null) {
+            if (state.busy) {
+                LoadingBox(Modifier.heightIn(min = 320.dp))
+            } else {
+                ErrorBanner(stringResource(R.string.hotspot_load_failed, state.failure.orEmpty()))
+            }
+            return@ScreenScaffold
+        }
+
+        StatusHero(status, state.busy, viewModel::setEnabled)
+        state.failure?.let { ErrorBanner(stringResource(R.string.hotspot_operation_failed, it)) }
+        SettingsSections(
             draft = draft,
             capability = status.capability,
             enabled = !state.busy,
             onEdit = viewModel::edit,
         )
         state.validationError?.let {
-            Text(
-                stringResource(it.messageRes()),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            ErrorBanner(stringResource(it.messageRes()), Modifier.padding(top = 8.dp))
         }
         if (state.isDirty && status.isEnabled) {
-            Text(
+            HintText(
                 stringResource(R.string.hotspot_restart_notice),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
             )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.align(Alignment.End)) {
-            TextButton(onClick = viewModel::discardChanges, enabled = state.isDirty && !state.busy) {
-                Text(stringResource(R.string.action_discard))
-            }
-            Button(onClick = viewModel::save, enabled = state.isDirty && !state.busy) {
-                Text(stringResource(R.string.action_save))
-            }
         }
     }
 }
 
+/** 頁面頂端的大型狀態區：變形徽章、狀態文字與主要的開關按鈕。 */
 @Composable
-private fun StatusCard(
-    status: HotspotStatus,
-    busy: Boolean,
-    onToggle: (Boolean) -> Unit,
-    onRefresh: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = if (status.isEnabled) {
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-        } else {
-            CardDefaults.cardColors()
-        },
+private fun StatusHero(status: HotspotStatus, busy: Boolean, onToggle: (Boolean) -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val on = status.isEnabled || status.apState == ApState.ENABLING
+    val container by animateColorAsState(
+        if (status.isEnabled) scheme.primaryContainer else scheme.surface,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "heroContainer",
+    )
+    val content = if (status.isEnabled) scheme.onPrimaryContainer else scheme.onSurface
+
+    Surface(
+        color = container,
+        contentColor = content,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.hotspot_title), style = MaterialTheme.typography.labelLarge)
-                    Text(stringResource(apStateLabel(status.apState)), style = MaterialTheme.typography.headlineSmall)
-                }
-                Switch(
-                    checked = status.isEnabled || status.apState == ApState.ENABLING,
-                    onCheckedChange = onToggle,
-                    enabled = !busy && !status.isTransitioning,
-                )
-            }
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (status.isEnabled) {
-                val frequency = status.activeFrequencies.firstOrNull()
-                if (frequency != null) {
-                    Text(
-                        stringResource(
-                            R.string.hotspot_active_channel,
-                            frequencyToChannel(frequency)?.toString() ?: "?",
-                            frequency,
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
+                MorphingBadge(
+                    active = status.isEnabled,
+                    size = 88.dp,
+                    inactiveShape = MaterialShapes.Circle,
+                    activeShape = MaterialShapes.Cookie9Sided,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_hotspot),
+                        contentDescription = null,
+                        tint = if (status.isEnabled) scheme.onPrimary else scheme.onSurfaceVariant,
+                        modifier = Modifier.size(40.dp),
                     )
                 }
-                Text(
-                    stringResource(R.string.hotspot_client_count, status.clientCount),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                Spacer(Modifier.width(20.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(stringResource(R.string.hotspot_title), style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        stringResource(apStateLabel(status.apState)),
+                        style = MaterialTheme.typography.headlineLargeEmphasized,
+                    )
+                    if (status.isEnabled) {
+                        status.activeFrequencies.firstOrNull()?.let { frequency ->
+                            Text(
+                                stringResource(
+                                    R.string.hotspot_active_channel,
+                                    frequencyToChannel(frequency)?.toString() ?: "?",
+                                    frequency,
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        Text(
+                            stringResource(R.string.hotspot_client_count, status.clientCount),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
             }
-            TextButton(onClick = onRefresh, enabled = !busy, modifier = Modifier.align(Alignment.End)) {
-                Text(stringResource(R.string.action_refresh))
+            if (busy) LinearWavyProgressIndicator(Modifier.fillMaxWidth())
+            ToggleButton(
+                checked = on,
+                onCheckedChange = onToggle,
+                enabled = !busy && !status.isTransitioning,
+                buttonSize = ToggleButtonSize.Medium,
+                shapes = ToggleButtonDefaults.shapesFor(ToggleButtonSize.Medium),
+                modifier = Modifier.fillMaxWidth(),
+                icon = { Icon(painterResource(R.drawable.ic_power), contentDescription = null) },
+            ) {
+                Text(stringResource(if (on) R.string.hotspot_turn_off else R.string.hotspot_turn_on))
             }
         }
     }
 }
 
+/** 有未儲存的變更時浮在底部的工具列。 */
 @Composable
-private fun FailureCard(message: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-            contentColor = MaterialTheme.colorScheme.onErrorContainer,
-        ),
+private fun SaveToolbar(enabled: Boolean, onDiscard: () -> Unit, onSave: () -> Unit) {
+    HorizontalFloatingToolbar(
+        expanded = true,
+        colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
     ) {
-        Text(
-            stringResource(R.string.hotspot_operation_failed, message),
-            modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        TextButton(onClick = onDiscard, enabled = enabled) {
+            Icon(painterResource(R.drawable.ic_undo), contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.action_discard))
+        }
+        Spacer(Modifier.width(8.dp))
+        Button(onClick = onSave, enabled = enabled, shapes = ButtonDefaults.shapes()) {
+            Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.action_save))
+        }
     }
 }
 
 @Composable
-private fun SettingsCard(
+private fun SettingsSections(
     draft: HotspotConfig,
     capability: HotspotCapability?,
     enabled: Boolean,
@@ -202,154 +249,146 @@ private fun SettingsCard(
     var passphraseVisible by rememberSaveable { mutableStateOf(false) }
     val needsPassphrase = draft.securityType != SecurityType.OPEN
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.titleMedium)
-
-            OutlinedTextField(
-                value = draft.ssid,
-                onValueChange = { value -> onEdit { it.copy(ssid = value) } },
-                label = { Text(stringResource(R.string.settings_ssid)) },
-                singleLine = true,
-                enabled = enabled,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            ChoiceRow(R.string.settings_security, SECURITY_CHOICES, draft.securityType, enabled) { value ->
-                onEdit { it.copy(securityType = value) }
-            }
-
-            if (needsPassphrase) {
+    SectionHeader(stringResource(R.string.settings_section_network))
+    SegmentedGroup {
+        item("ssid") { shapes ->
+            SegmentSurface(shapes) {
                 OutlinedTextField(
-                    value = draft.passphrase,
-                    onValueChange = { value -> onEdit { it.copy(passphrase = value) } },
-                    label = { Text(stringResource(R.string.settings_passphrase)) },
+                    value = draft.ssid,
+                    onValueChange = { value -> onEdit { it.copy(ssid = value) } },
+                    label = { Text(stringResource(R.string.settings_ssid)) },
                     singleLine = true,
                     enabled = enabled,
-                    visualTransformation = if (passphraseVisible) {
-                        VisualTransformation.None
-                    } else {
-                        PasswordVisualTransformation()
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    trailingIcon = {
-                        TextButton(onClick = { passphraseVisible = !passphraseVisible }) {
-                            Text(
-                                stringResource(
-                                    if (passphraseVisible) R.string.action_hide else R.string.action_show,
-                                ),
-                            )
-                        }
-                    },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-
-            ChoiceRow(R.string.settings_band, BAND_CHOICES, draft.band, enabled) { value ->
-                // 換頻段後原本的頻道不一定存在，一律回到自動
-                onEdit { it.copy(band = value, channel = 0) }
-            }
-
-            if (Band.isSingle(draft.band)) {
-                val channels = capability?.channels?.get(draft.band).orEmpty()
-                ChannelRow(channels, draft.channel, enabled) { value -> onEdit { it.copy(channel = value) } }
-                Text(
-                    stringResource(R.string.settings_channel_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            OutlinedTextField(
-                value = if (draft.maxClients == 0) "" else draft.maxClients.toString(),
-                onValueChange = { value ->
-                    val parsed = value.filter(Char::isDigit).take(3).toIntOrNull() ?: 0
-                    onEdit { it.copy(maxClients = parsed) }
-                },
-                label = { Text(stringResource(R.string.settings_max_clients)) },
-                placeholder = { Text(stringResource(R.string.settings_max_clients_unlimited)) },
-                supportingText = capability?.let {
-                    { Text(stringResource(R.string.settings_max_clients_hint, it.maxSupportedClients)) }
-                },
-                singleLine = true,
-                enabled = enabled,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            SwitchRow(R.string.settings_hidden, draft.hidden, enabled) { value -> onEdit { it.copy(hidden = value) } }
-            SwitchRow(R.string.settings_auto_shutdown, draft.autoShutdown, enabled) { value ->
-                onEdit { it.copy(autoShutdown = value) }
-            }
-            SwitchRow(R.string.settings_client_isolation, draft.clientIsolation, enabled) { value ->
-                onEdit { it.copy(clientIsolation = value) }
-            }
-            Text(
-                stringResource(R.string.settings_client_isolation_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
-    }
-}
-
-@Composable
-private fun ChoiceRow(
-    @StringRes label: Int,
-    choices: List<Choice>,
-    selected: Int,
-    enabled: Boolean,
-    onSelect: (Int) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(label), style = MaterialTheme.typography.labelLarge)
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            choices.forEach { choice ->
-                FilterChip(
-                    selected = choice.value == selected,
-                    onClick = { onSelect(choice.value) },
-                    label = { Text(stringResource(choice.label)) },
+        item("security") { shapes ->
+            SegmentSurface(shapes) {
+                Text(stringResource(R.string.settings_security), style = MaterialTheme.typography.labelLarge)
+                ConnectedChoiceGroup(
+                    options = SECURITY_CHOICES,
+                    selected = SECURITY_CHOICES.first { it.value == draft.securityType },
+                    label = { stringResource(it.label) },
+                    onSelect = { choice -> onEdit { it.copy(securityType = choice.value) } },
                     enabled = enabled,
                 )
+                if (needsPassphrase) {
+                    OutlinedTextField(
+                        value = draft.passphrase,
+                        onValueChange = { value -> onEdit { it.copy(passphrase = value) } },
+                        label = { Text(stringResource(R.string.settings_passphrase)) },
+                        singleLine = true,
+                        enabled = enabled,
+                        visualTransformation = if (passphraseVisible) {
+                            VisualTransformation.None
+                        } else {
+                            PasswordVisualTransformation()
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            IconButton(onClick = { passphraseVisible = !passphraseVisible }) {
+                                Icon(
+                                    painterResource(
+                                        if (passphraseVisible) R.drawable.ic_visibility_off else R.drawable.ic_visibility,
+                                    ),
+                                    contentDescription = stringResource(
+                                        if (passphraseVisible) R.string.action_hide else R.string.action_show,
+                                    ),
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
     }
-}
 
-@Composable
-private fun ChannelRow(channels: List<Int>, selected: Int, enabled: Boolean, onSelect: (Int) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(R.string.settings_channel), style = MaterialTheme.typography.labelLarge)
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            FilterChip(
-                selected = selected == 0,
-                onClick = { onSelect(0) },
-                label = { Text(stringResource(R.string.channel_auto)) },
-                enabled = enabled,
-            )
-            channels.forEach { channel ->
-                FilterChip(
-                    selected = channel == selected,
-                    onClick = { onSelect(channel) },
-                    label = { Text(channel.toString()) },
+    SectionHeader(stringResource(R.string.settings_section_radio))
+    SegmentedGroup {
+        item("band") { shapes ->
+            SegmentSurface(shapes) {
+                Text(stringResource(R.string.settings_band), style = MaterialTheme.typography.labelLarge)
+                ConnectedChoiceGroup(
+                    options = BAND_CHOICES,
+                    selected = BAND_CHOICES.firstOrNull { it.value == draft.band } ?: BAND_CHOICES.first(),
+                    label = { stringResource(it.label) },
+                    // 換頻段後原本的頻道不一定存在，一律回到自動
+                    onSelect = { choice -> onEdit { it.copy(band = choice.value, channel = 0) } },
                     enabled = enabled,
+                )
+                if (draft.band == Band.AUTO_2GHZ_5GHZ) HintText(stringResource(R.string.band_auto_hint))
+            }
+        }
+        if (Band.isSingle(draft.band)) {
+            item("channel") { shapes ->
+                SegmentSurface(shapes) {
+                    Text(stringResource(R.string.settings_channel), style = MaterialTheme.typography.labelLarge)
+                    val channels = listOf(0) + capability?.channels?.get(draft.band).orEmpty()
+                    ChoiceFlow(
+                        options = channels,
+                        selected = draft.channel,
+                        label = { if (it == 0) stringResource(R.string.channel_auto) else it.toString() },
+                        onSelect = { value -> onEdit { it.copy(channel = value) } },
+                        enabled = enabled,
+                    )
+                    HintText(stringResource(R.string.settings_channel_hint))
+                }
+            }
+        }
+    }
+
+    SectionHeader(stringResource(R.string.settings_section_advanced))
+    SegmentedGroup {
+        item("maxClients") { shapes ->
+            SegmentSurface(shapes) {
+                OutlinedTextField(
+                    value = if (draft.maxClients == 0) "" else draft.maxClients.toString(),
+                    onValueChange = { value ->
+                        val parsed = value.filter(Char::isDigit).take(3).toIntOrNull() ?: 0
+                        onEdit { it.copy(maxClients = parsed) }
+                    },
+                    label = { Text(stringResource(R.string.settings_max_clients)) },
+                    placeholder = { Text(stringResource(R.string.settings_max_clients_unlimited)) },
+                    supportingText = capability?.let {
+                        { Text(stringResource(R.string.settings_max_clients_hint, it.maxSupportedClients)) }
+                    },
+                    singleLine = true,
+                    enabled = enabled,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun SwitchRow(@StringRes label: Int, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(label), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+        item("hidden") { shapes ->
+            SwitchItem(
+                shapes = shapes,
+                title = stringResource(R.string.settings_hidden),
+                checked = draft.hidden,
+                onCheckedChange = { value -> onEdit { it.copy(hidden = value) } },
+                enabled = enabled,
+            )
+        }
+        item("autoShutdown") { shapes ->
+            SwitchItem(
+                shapes = shapes,
+                title = stringResource(R.string.settings_auto_shutdown),
+                checked = draft.autoShutdown,
+                onCheckedChange = { value -> onEdit { it.copy(autoShutdown = value) } },
+                enabled = enabled,
+            )
+        }
+        item("isolation") { shapes ->
+            SwitchItem(
+                shapes = shapes,
+                title = stringResource(R.string.settings_client_isolation),
+                supporting = stringResource(R.string.settings_client_isolation_hint),
+                checked = draft.clientIsolation,
+                onCheckedChange = { value -> onEdit { it.copy(clientIsolation = value) } },
+                enabled = enabled,
+            )
+        }
     }
 }
 

@@ -2,6 +2,8 @@
 agp = "9.5.1"
 kotlin = "2.4.21"
 composeBom = "2026.09.00"
+# M3 Expressive 元件只存在於 1.5.0 預覽版，BOM 對應的穩定版 1.4.0 沒有
+material3 = "1.5.0-rc01"
 activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 libsu = "6.0.0"
@@ -10,7 +12,7 @@ junit = "4.13.2"
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
-androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3", version.ref = "material3" }
 androidx-compose-ui = { module = "androidx.compose.ui:ui" }
 androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }

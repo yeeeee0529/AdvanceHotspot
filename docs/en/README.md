@@ -15,6 +15,17 @@ AdvanceHotspot is an Android app that extends the system Wi-Fi hotspot on a root
 - Intranet: custom subnet and gateway, static IP binding by MAC, local DNS names, client isolation switch
 - Per-device rate limit and traffic statistics
 
+## Interface
+
+The UI follows Material 3 Expressive (Compose Material 3 `1.5.0-rc01`, dynamic color, expressive motion). A bottom navigation bar has four tabs:
+
+| Tab | Contents |
+| --- | --- |
+| Hotspot | Status, on/off button, and hotspot settings. Unsaved changes bring up a floating save toolbar. |
+| Devices | Connected, offline and blocked devices. Tap a device to open a sheet with its traffic, routing, details and actions (rename, static IP, rate limit, block). |
+| Network | Switches and global settings for per-device routing, custom intranet and traffic statistics. |
+| Environment | Root status, system information, network tools and active interfaces. |
+
 ## Requirements
 
 - Pixel 9 Pro XL on Android 17 (API 37). Other devices are not supported yet because the app relies on hidden APIs of one Android release.
@@ -51,7 +62,7 @@ KernelSU does not prompt for root. Open the KernelSU manager, enable superuser f
 | `app/src/main/kotlin/.../traffic` | Counting and rate limit rules, counter parsing, stored limits and totals |
 | `app/src/main/kotlin/.../intranet` | Custom subnet settings and the script generator that manages dnsmasq and the DHCP redirect |
 | `app/src/main/kotlin/.../system` | Device and network probing, command output parsers |
-| `app/src/main/kotlin/.../ui` | Jetpack Compose screens and view models |
+| `app/src/main/kotlin/.../ui` | Jetpack Compose screens (Material 3 Expressive), shared components and view models |
 
 ## How hotspot control works
 
@@ -61,7 +72,7 @@ A forced channel takes effect even while the phone is connected to Wi-Fi on a di
 
 ## How per-device routing works
 
-Turn on "per-device routing" in the Devices tab. A foreground service then keeps a set of rules in sync with the connected devices and the phone's networks. It listens for client and network changes through a long-running helper process, so there is no polling.
+Turn on "per-device routing" in the Network tab. A foreground service then keeps a set of rules in sync with the connected devices and the phone's networks. It listens for client and network changes through a long-running helper process, so there is no polling.
 
 Each device has an internet switch and an egress: the global default, follow the system, Wi-Fi, mobile data, VPN or Ethernet. Egress is chosen by network type, not interface name, because a VPN interface can come back under a different name after reconnecting.
 
@@ -85,7 +96,7 @@ Known limits:
 
 ## How the custom intranet works
 
-Turn on "custom intranet" in the Devices tab. The same foreground service then takes over address assignment on the hotspot interface.
+Turn on "custom intranet" in the Network tab. The same foreground service then takes over address assignment on the hotspot interface.
 
 - It adds a second address to the hotspot interface as the gateway, for example `10.77.0.1/24`. The hotspot can still be started from anywhere, including the system quick settings.
 - It runs the phone's own `/system/bin/dnsmasq` twice: one instance for DHCP only, one for DNS only on the gateway address.
@@ -103,7 +114,7 @@ Known limits:
 
 ## How traffic statistics and rate limits work
 
-Turn on "traffic statistics and rate limit" in the Devices tab. The foreground service adds one counting rule per device and direction and reads the counters every two seconds to show live rates and running totals. Totals are stored per MAC address and survive restarts until you reset them.
+Turn on "traffic statistics and rate limit" in the Network tab. The foreground service adds one counting rule per device and direction and reads the counters every two seconds to show live rates and running totals. Totals are stored per MAC address and survive restarts until you reset them.
 
 A rate limit is a second rule in front of the counting rule that drops packets above the configured rate (`hashlimit`). This is policing, not queueing: TCP slows down to roughly the limit, and the measured speed fluctuates around it rather than sitting exactly on it.
 

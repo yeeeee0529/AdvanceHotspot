@@ -16,13 +16,18 @@ All six planned phases are implemented and committed on the local `main` branch.
 | 4 | Per-device routing, egress selection, kill switch, IPv6 leak protection | Done |
 | 5 | Custom intranet: subnet, static leases, local DNS, client isolation | Done |
 | 6 | Per-device traffic statistics and rate limits | Done |
+| UI | Material 3 Expressive rewrite, four tabs | Done; on-device check partial (see Verification status) |
 
 Last check results: `assembleDebug` passes, 27 unit tests pass, `lintDebug` reports 0 errors and 2 accepted warnings (`AndroidGradlePluginVersion`, `DataExtractionRules`).
+
+The UI was rewritten to Material 3 Expressive on 2026-11-16. Only the `ui` package, `MainActivity`-adjacent theme, resources and docs changed; no view model, script generator or root-side code changed.
 
 ## Target and tooling
 
 - Only one device is supported: Pixel 9 Pro XL, Android 17 (API 37), rooted with KernelSU. `minSdk` is 37 on purpose because the app calls hidden APIs of a single Android release.
 - Kotlin with Jetpack Compose, AGP 9.5.1 with built-in Kotlin, Gradle wrapper 9.8.2, libsu 6.0.0. There is no core-ktx dependency; do not add one for syntax sugar.
+- Compose Material 3 is pinned to `1.5.0-rc01` in `gradle/libs.versions.toml`, overriding the BOM. The owner chose this pre-release on purpose because the M3 Expressive components do not exist in the stable 1.4.0. Move to 1.5.0 stable once it is released.
+- Icons are hand-written vector drawables in `res/drawable` (Material Symbols paths). There is no `material-icons` dependency; add new icons the same way.
 - UI strings are Traditional Chinese (`zh-TW`) in `app/src/main/res/values/strings.xml`. Source comments are Traditional Chinese. Identifiers, diagnostics and this file are English.
 - Human documentation is three files kept in sync: `README.md`, `docs/zh-TW/README.md`, `docs/en/README.md`.
 
@@ -49,15 +54,21 @@ Lint results are easiest to read from `app/build/reports/lint-results-debug.sari
 | `routing` | Routing policy, rule script generator, egress resolution, and `RoutingService` |
 | `intranet` | Custom subnet settings and the script generator for dnsmasq and the DHCP redirect |
 | `traffic` | Counting and rate limit rules, counter parsing, stored limits and totals |
-| `ui` | Compose screens and view models: `hotspot`, `devices`, `environment` |
+| `ui` | Compose screens and view models: `hotspot`, `devices`, `network`, `environment`; shared M3 Expressive building blocks in `ui/components/Expressive.kt` |
 
 `RoutingService` is one foreground service shared by routing, intranet and traffic. It runs when any of the three is enabled (`RoutingRuntime.sync`). On every trigger it applies intranet, then routing, then traffic. Traffic must be applied last so that its chain sits before the routing chain in `FORWARD`.
+
+The UI has four tabs in `MainScreen` with a bottom `ShortNavigationBar`. Each tab owns its own `ScreenScaffold` (large flexible top app bar). The Devices and Network tabs share one `DevicesViewModel` (both call `viewModel()` with the activity as owner) and both run `DevicesPolling`; only one is visible at a time, so only one poll loop runs. Grouped settings use `SegmentedGroup`, which hands each item its position-based `ListItemShapes`.
 
 All root-side state is produced by pure script generators (`RoutingPlan.toScript`, `IntranetConfig.toScript`, `buildTrafficScript`). Each one validates every external value against a strict pattern before it enters a shell script. Keep that property when you add inputs.
 
 ## Findings that cost time to discover
 
 Read these before changing the helper, the DHCP path, or the firewall rules.
+
+- **Stable Compose Material 3 1.4.0 lacks the M3 Expressive components.** Only `ShortNavigationBar` and `MotionScheme` are there. `MaterialExpressiveTheme`, `ButtonGroup`, `ToggleButton`, `LoadingIndicator`, `FloatingToolbar`, `MaterialShapes`, the flexible top app bars and `SegmentedListItem` need 1.5.0 (pinned to `1.5.0-rc01`). The source jar on Google Maven (`material3-android-1.5.0-rc01-sources.jar`) is the quickest reference for their signatures.
+- **A toggleable `SegmentedListItem` paints its whole row in the selected container color when checked.** `SwitchItem` overrides the selected colors with the normal ones so a switch row does not look selected.
+- **Reinstalling the app as a fresh install drops its KernelSU root grant and all stored settings.** The helper then fails with `su: inaccessible or not found` (exit 127). Check `dumpsys package me.yeeeee.advancehotspot | grep firstInstallTime` before assuming a code regression.
 
 - **Hidden APIs must be called as the shell user, not root.** SoftAP and tethering services check that the caller's package belongs to the calling uid. Root has no package. The helper is started with `su 2000 -c 'CLASSPATH=<apk> app_process ...'` and presents itself as `com.android.shell`.
 - **A context wrapper is not enough.** Managers are built on the underlying `ContextImpl`, so the op package name stays `android`. `SoftApBridge` overwrites each manager's `mContext` field with the wrapper. `setOuterContext` did not work.
@@ -86,6 +97,8 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 | Client isolation | Setting write and read-back only |
 | Mobile data egress, start on boot | Not tested |
 | Nickname entry in Chinese | Not tested |
+| M3 Expressive UI: Hotspot (hotspot off), Network, Environment, empty Devices list, dark theme | Verified on device by screenshot |
+| M3 Expressive UI: floating save toolbar, device rows and device sheet, light theme | Not verified on device |
 
 ## Known limits
 
@@ -98,10 +111,11 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 
 ## State left on the test phone
 
-- Hotspot on. Custom intranet on with gateway `10.77.0.1`; the owner's test client has a static lease at `10.77.0.50`.
-- Per-device routing off. Traffic statistics off, with no limits stored.
-- The app has root in KernelSU, and so does `adb shell`. The notification permission is granted.
-- Turning the intranet off strands clients on `10.77.0.x` until they reconnect, so it was left on deliberately.
+- On 2026-11-16 the app was found uninstalled at the start of the session (the phone had also rebooted). It was installed fresh, so all earlier app settings are gone: routing, intranet and traffic are off, with no static leases, nicknames or limits.
+- The hotspot is off.
+- The owner granted the fresh install root in KernelSU during the session. `adb shell` has root.
+- The notification permission has not been requested for the fresh install yet.
+- Dark mode is on (`cmd uimode night yes`). Auto-rotate is on; an agent tap may have hit its Quick Settings tile, so its earlier value is unknown.
 
 ## Working with the phone
 
@@ -113,6 +127,8 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 
 Nothing is in progress. Candidates, none of them started or agreed with the owner:
 
+0. Finish the on-device check of the new UI: floating save toolbar, device rows and sheet with a real client, and light theme.
+
 1. Close the verification gaps above, starting with a real speed test under a rate limit.
 2. Let egress-bound devices resolve `.lan` names, for example with one DNS instance per egress.
 3. Extend rate limits and counters to IPv6.
@@ -122,6 +138,13 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-16 (UI rewrite)
+
+- Rewrote the UI to Material 3 Expressive: `MaterialExpressiveTheme` with dynamic color and expressive motion, bottom `ShortNavigationBar`, large flexible top app bars, segmented lists, connected toggle button groups, shape-morphing status badges, `LoadingIndicator`, a floating save toolbar on the Hotspot tab, and a bottom sheet per device.
+- Owner decisions: split the old Devices tab into Devices (device list) and Network (routing, intranet, traffic switches); pin Compose Material 3 to `1.5.0-rc01`.
+- Found the app uninstalled on the phone; the fresh install needed a new root grant, which the owner gave.
+- Unfinished: on-device check of the save toolbar, device rows and sheet, and light theme. The phone was in use by the owner, and the owner chose to commit without those checks.
 
 ### 2026-11-16
 
