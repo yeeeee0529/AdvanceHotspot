@@ -44,9 +44,17 @@ KernelSU 不會跳出授權提示。請開啟 KernelSU 管理器，替 AdvanceHo
 | 路徑 | 職責 |
 | --- | --- |
 | `app/src/main/kotlin/.../root` | root 指令的單一出入口（libsu） |
+| `app/src/main/kotlin/.../helper` | 以 `app_process` 用 shell 身分執行的指令列 helper，負責呼叫 SoftAP 與 tethering 的隱藏 API |
+| `app/src/main/kotlin/.../hotspot` | 熱點資料模型、驗證，以及呼叫 helper 的控制器 |
 | `app/src/main/kotlin/.../system` | 裝置與網路探測、指令輸出解析 |
 | `app/src/main/kotlin/.../ui` | Jetpack Compose 畫面與 view model |
 
+## 熱點控制的運作方式
+
+SoftAP 與 tethering 的隱藏 API 會檢查呼叫端的套件名稱是否屬於呼叫的 uid。root（uid 0）沒有對應套件，呼叫會被拒絕。因此 app 只用 root 來降權成 shell 使用者（uid 2000），再用 `app_process` 執行自己 APK 內的小型 helper。`com.android.shell` 擁有 `NETWORK_SETTINGS` 與 `TETHER_PRIVILEGED`，足以寫入 SoftAP 設定並啟動 tethering。
+
+指定頻道在手機同時連著不同頻道的 Wi-Fi 時仍會生效（已在 Pixel 9 Pro XL 實測）。熱點開啟中儲存設定會重新啟動熱點，已連線的裝置會暫時斷線。
+
 ## 狀態
 
-階段 1 已完成：專案可建置、安裝，並顯示 root 狀態、核心版本、必要網路工具與啟用中的網路介面。熱點控制尚未實作。各階段進度見[總覽](../../README.md#status)。
+階段 1 與 2 已完成：app 可讀寫 SSID、加密方式、密碼、頻段、頻道、最大連線數、隱藏 SSID 與自動關閉，並能開關熱點。連線裝置清單、路由、內網與限速尚未實作。各階段進度見[總覽](../../README.md#status)。

@@ -13,12 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -32,39 +29,29 @@ import me.yeeeee.advancehotspot.R
 import me.yeeeee.advancehotspot.system.EnvironmentInfo
 import me.yeeeee.advancehotspot.system.NetworkInterfaceInfo
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EnvironmentScreen(viewModel: EnvironmentViewModel = viewModel()) {
+fun EnvironmentScreen(modifier: Modifier = Modifier, viewModel: EnvironmentViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.app_name)) },
-                actions = {
-                    TextButton(onClick = viewModel::refresh, enabled = !state.loading) {
-                        Text(stringResource(R.string.action_refresh))
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
-        val info = state.info
-        if (info == null) {
-            Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else {
-            EnvironmentContent(info, innerPadding)
+    val info = state.info
+    if (info == null) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
         }
+    } else {
+        EnvironmentContent(info, !state.loading, viewModel::refresh, modifier)
     }
 }
 
 @Composable
-private fun EnvironmentContent(info: EnvironmentInfo, innerPadding: PaddingValues) {
+private fun EnvironmentContent(
+    info: EnvironmentInfo,
+    refreshEnabled: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val unknown = stringResource(R.string.value_unknown)
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(innerPadding),
+        modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -97,6 +84,11 @@ private fun EnvironmentContent(info: EnvironmentInfo, innerPadding: PaddingValue
             SectionCard(stringResource(R.string.interfaces_title)) {
                 // 只列出啟用中的介面，rmnet 等閒置介面數量太多會淹沒有用的資訊
                 info.interfaces.filter { it.isUp }.forEach { InterfaceRow(it) }
+            }
+        }
+        item {
+            TextButton(onClick = onRefresh, enabled = refreshEnabled) {
+                Text(stringResource(R.string.action_refresh))
             }
         }
     }

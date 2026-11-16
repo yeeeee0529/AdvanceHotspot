@@ -27,9 +27,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    lint {
+        // 專案沒有引入 core-ktx，不需要為了語法糖多一個相依套件
+        disable += "UseKtx"
+    }
+
     buildFeatures {
         compose = true
-        buildConfig = true
     }
 }
 

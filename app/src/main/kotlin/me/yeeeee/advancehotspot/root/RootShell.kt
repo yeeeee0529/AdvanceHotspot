@@ -18,8 +18,9 @@ object RootShell {
     private const val SHELL_TIMEOUT_SECONDS = 10L
 
     /** 必須在第一次取得 shell 之前呼叫，由 [me.yeeeee.advancehotspot.App] 負責。 */
-    fun configure(verboseLogging: Boolean) {
-        Shell.enableVerboseLogging = verboseLogging
+    fun configure() {
+        // 指令輸出含熱點密碼，不可開啟 libsu 的 verbose logging，否則會寫進 logcat
+        Shell.enableVerboseLogging = false
         Shell.setDefaultBuilder(Shell.Builder.create().setTimeout(SHELL_TIMEOUT_SECONDS))
     }
 

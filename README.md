@@ -26,7 +26,7 @@ Grant the app root in the KernelSU manager after the first install.
 | Phase | Scope | State |
 | --- | --- | --- |
 | 1 | Project skeleton, root check, environment screen | Done |
-| 2 | Hotspot configuration (band, channel, max clients) | Planned |
+| 2 | Hotspot configuration (band, channel, max clients) and on/off | Done |
 | 3 | Connected device list | Planned |
 | 4 | Per-device routing, kill switch, IPv6 leak protection | Planned |
 | 5 | Intranet: custom subnet, static leases, local DNS, isolation | Planned |

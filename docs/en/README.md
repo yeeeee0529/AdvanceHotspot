@@ -44,9 +44,17 @@ KernelSU does not prompt for root. Open the KernelSU manager, enable superuser f
 | Path | Role |
 | --- | --- |
 | `app/src/main/kotlin/.../root` | Single entry point for root commands (libsu) |
+| `app/src/main/kotlin/.../helper` | Command-line helper run with `app_process` as the shell user; calls hidden SoftAP and tethering APIs |
+| `app/src/main/kotlin/.../hotspot` | Hotspot model, validation, and the controller that invokes the helper |
 | `app/src/main/kotlin/.../system` | Device and network probing, command output parsers |
 | `app/src/main/kotlin/.../ui` | Jetpack Compose screens and view models |
 
+## How hotspot control works
+
+Hidden SoftAP and tethering APIs verify that the caller's package name belongs to the calling uid. Root (uid 0) has no package, so those calls are rejected. The app therefore uses root only to drop to the shell user (uid 2000) and runs a small helper from its own APK with `app_process`. The `com.android.shell` package holds `NETWORK_SETTINGS` and `TETHER_PRIVILEGED`, which is enough to write the SoftAP configuration and start tethering.
+
+A forced channel takes effect even while the phone is connected to Wi-Fi on a different channel (verified on the Pixel 9 Pro XL). Saving while the hotspot is on restarts it, so connected devices drop briefly.
+
 ## Status
 
-Phase 1 is done: the project builds, installs, and shows root state, kernel, required network tools and active interfaces. Hotspot control is not implemented yet. See the phase table in the [overview](../../README.md#status).
+Phases 1 and 2 are done. The app reads and writes SSID, security type, passphrase, band, channel, maximum client count, hidden SSID and auto shutdown, and turns the hotspot on and off. The connected device list, routing, intranet and rate limiting are not implemented yet. See the phase table in the [overview](../../README.md#status).
