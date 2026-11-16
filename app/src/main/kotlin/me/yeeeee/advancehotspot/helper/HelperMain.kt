@@ -34,6 +34,8 @@ object HelperMain {
             val result = when (val command = args.firstOrNull()) {
                 "status" -> bridge.status()
                 "set-config" -> bridge.applyConfig(decodeJsonArgument(args))
+                "clients" -> bridge.clients()
+                "set-blocked" -> bridge.setBlocked(decodeJsonArgument(args))
                 "start" -> bridge.start()
                 "stop" -> bridge.stop()
                 else -> throw IllegalArgumentException("Unknown command: $command")

@@ -46,6 +46,7 @@ KernelSU 不會跳出授權提示。請開啟 KernelSU 管理器，替 AdvanceHo
 | `app/src/main/kotlin/.../root` | root 指令的單一出入口（libsu） |
 | `app/src/main/kotlin/.../helper` | 以 `app_process` 用 shell 身分執行的指令列 helper，負責呼叫 SoftAP 與 tethering 的隱藏 API |
 | `app/src/main/kotlin/.../hotspot` | 熱點資料模型、驗證，以及呼叫 helper 的控制器 |
+| `app/src/main/kotlin/.../devices` | 以 MAC 位址保存的裝置標註 |
 | `app/src/main/kotlin/.../system` | 裝置與網路探測、指令輸出解析 |
 | `app/src/main/kotlin/.../ui` | Jetpack Compose 畫面與 view model |
 
@@ -57,4 +58,4 @@ SoftAP 與 tethering 的隱藏 API 會檢查呼叫端的套件名稱是否屬於
 
 ## 狀態
 
-階段 1 與 2 已完成：app 可讀寫 SSID、加密方式、密碼、頻段、頻道、最大連線數、隱藏 SSID 與自動關閉，並能開關熱點。連線裝置清單、路由、內網與限速尚未實作。各階段進度見[總覽](../../README.md#status)。
+階段 1 到 3 已完成：app 可讀寫 SSID、加密方式、密碼、頻段、頻道、最大連線數、隱藏 SSID 與自動關閉，並能開關熱點。「裝置」分頁會列出連線裝置的主機名稱、IP 位址與 MAC 位址，可替裝置取暱稱，並依 MAC 位址封鎖或解除封鎖。路由、內網與限速尚未實作。各階段進度見[總覽](../../README.md#status)。

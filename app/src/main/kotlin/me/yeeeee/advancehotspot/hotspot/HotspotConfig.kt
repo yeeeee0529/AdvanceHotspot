@@ -64,6 +64,18 @@ data class HotspotStatus(
     val isTransitioning: Boolean get() = apState == ApState.ENABLING || apState == ApState.DISABLING
 }
 
+/** 目前連上熱點的裝置；尚未取得 DHCP 租約時沒有 IP 與主機名稱。 */
+data class ConnectedClient(
+    val mac: String,
+    val ip: String?,
+    val hostname: String?,
+)
+
+data class ClientSnapshot(
+    val clients: List<ConnectedClient>,
+    val blockedMacs: List<String>,
+)
+
 enum class ConfigError {
     SSID_EMPTY,
     SSID_TOO_LONG,

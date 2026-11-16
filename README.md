@@ -27,7 +27,7 @@ Grant the app root in the KernelSU manager after the first install.
 | --- | --- | --- |
 | 1 | Project skeleton, root check, environment screen | Done |
 | 2 | Hotspot configuration (band, channel, max clients) and on/off | Done |
-| 3 | Connected device list | Planned |
+| 3 | Connected device list, nicknames, MAC blocking | Done |
 | 4 | Per-device routing, kill switch, IPv6 leak protection | Planned |
 | 5 | Intranet: custom subnet, static leases, local DNS, isolation | Planned |
 | 6 | Per-device rate limit and traffic statistics | Planned |

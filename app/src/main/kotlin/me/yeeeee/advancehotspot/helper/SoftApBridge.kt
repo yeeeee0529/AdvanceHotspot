@@ -2,11 +2,14 @@ package me.yeeeee.advancehotspot.helper
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.net.LinkAddress
+import android.net.MacAddress
 import android.net.wifi.WifiManager
 import android.util.SparseIntArray
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.reflect.Proxy
+import java.net.Inet4Address
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
@@ -36,7 +39,7 @@ class SoftApBridge(context: Context) {
             .put("config", configToJson(currentConfig()))
             .put("capability", snapshot.capability?.let(::capabilityToJson) ?: JSONObject.NULL)
             .put("activeFrequencies", JSONArray(snapshot.frequencies))
-            .put("clientCount", snapshot.clientCount)
+            .put("clientCount", snapshot.clientMacs.size)
     }
 
     fun applyConfig(json: JSONObject): JSONObject {
@@ -70,6 +73,39 @@ class SoftApBridge(context: Context) {
         val accepted = wifiManager.call("setSoftApConfiguration", builder.call("build")) as Boolean
         if (!accepted) throw IllegalStateException("System rejected the SoftAP configuration")
         return JSONObject().put("config", configToJson(currentConfig()))
+    }
+
+    /** 列出目前連線的裝置與封鎖清單。 */
+    fun clients(): JSONObject {
+        val byMac = LinkedHashMap<String, JSONObject>()
+        // 先放 Wi-Fi 層已連上的裝置，尚未取得 DHCP 租約的裝置也會出現在清單中
+        for (mac in collectCallbackSnapshot().clientMacs) {
+            byMac[mac] = JSONObject().put("mac", mac).put("ip", "").put("hostname", "")
+        }
+        for (client in collectTetheredClients()) {
+            val mac = client?.call("getMacAddress").toString()
+            val entry = byMac.getOrPut(mac) { JSONObject().put("mac", mac).put("ip", "").put("hostname", "") }
+            for (addressInfo in client?.call("getAddresses") as List<*>) {
+                val address = (addressInfo?.call("getAddress") as LinkAddress).address
+                if (address is Inet4Address) entry.put("ip", address.hostAddress)
+                (addressInfo.call("getHostname") as String?)?.let { entry.put("hostname", it) }
+            }
+        }
+        return JSONObject()
+            .put("clients", JSONArray(byMac.values))
+            .put("blocked", JSONArray(blockedMacs(currentConfig())))
+    }
+
+    /** 以新的清單取代封鎖名單；熱點開啟中會立即踢除被封鎖的裝置，不需要重新啟動。 */
+    fun setBlocked(json: JSONObject): JSONObject {
+        val macs = json.getJSONArray("blocked")
+        val blocked = List(macs.length()) { MacAddress.fromString(macs.getString(it)) }
+        val configClass = Class.forName(CONFIG_CLASS)
+        val builder = Class.forName("$CONFIG_CLASS\$Builder").getConstructor(configClass).newInstance(currentConfig())
+        builder.call("setBlockedClientList", blocked)
+        val accepted = wifiManager.call("setSoftApConfiguration", builder.call("build")) as Boolean
+        if (!accepted) throw IllegalStateException("System rejected the blocked client list")
+        return JSONObject().put("blocked", JSONArray(blockedMacs(currentConfig())))
     }
 
     fun start(): JSONObject {
@@ -122,6 +158,32 @@ class SoftApBridge(context: Context) {
             .put("autoShutdown", config.call("isAutoShutdownEnabled"))
     }
 
+    private fun blockedMacs(config: Any): List<String> =
+        (config.call("getBlockedClientList") as List<*>).map { it.toString() }
+
+    /** 向 tethering 服務取得已連線裝置（含 DHCP 位址與主機名稱）；註冊後系統會立即回報一次。 */
+    private fun collectTetheredClients(): Collection<*> {
+        val callbackClass = Class.forName("android.net.TetheringManager\$TetheringEventCallback")
+        val latch = CountDownLatch(1)
+        var clients: Collection<*> = emptyList<Any>()
+        val callback = proxyOf(callbackClass) { name, args ->
+            if (name == "onClientsChanged") {
+                clients = args[0] as Collection<*>
+                latch.countDown()
+            }
+        }
+        tetheringManager.javaClass
+            .getMethod("registerTetheringEventCallback", Executor::class.java, callbackClass)
+            .invoke(tetheringManager, directExecutor, callback)
+        try {
+            latch.await(CALLBACK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        } finally {
+            tetheringManager.javaClass.getMethod("unregisterTetheringEventCallback", callbackClass)
+                .invoke(tetheringManager, callback)
+        }
+        return clients
+    }
+
     private fun capabilityToJson(capability: Any): JSONObject {
         val channelsByBand = JSONObject()
         for (band in SINGLE_BANDS) {
@@ -137,7 +199,7 @@ class SoftApBridge(context: Context) {
     private class CallbackSnapshot(
         val capability: Any?,
         val frequencies: List<Int>,
-        val clientCount: Int,
+        val clientMacs: List<String>,
     )
 
     /** 註冊 SoftAP callback 後系統會立即回報目前狀態，收齊後即取消註冊。 */
@@ -146,7 +208,7 @@ class SoftApBridge(context: Context) {
         val capabilityLatch = CountDownLatch(1)
         var capability: Any? = null
         var frequencies = emptyList<Int>()
-        var clientCount = 0
+        var clientMacs = emptyList<String>()
         val callback = proxyOf(callbackClass) { name, args ->
             when (name) {
                 "onCapabilityChanged" -> {
@@ -156,7 +218,9 @@ class SoftApBridge(context: Context) {
                 "onInfoChanged" -> (args[0] as? List<*>)?.let { infos ->
                     frequencies = infos.mapNotNull { it?.call("getFrequency") as Int? }
                 }
-                "onConnectedClientsChanged" -> (args.last() as? List<*>)?.let { clientCount = it.size }
+                "onConnectedClientsChanged" -> (args.last() as? List<*>)?.let { clients ->
+                    clientMacs = clients.mapNotNull { it?.call("getMacAddress")?.toString() }
+                }
             }
         }
         wifiManager.javaClass.getMethod("registerSoftApCallback", Executor::class.java, callbackClass)
@@ -167,7 +231,7 @@ class SoftApBridge(context: Context) {
             wifiManager.javaClass.getMethod("unregisterSoftApCallback", callbackClass)
                 .invoke(wifiManager, callback)
         }
-        return CallbackSnapshot(capability, frequencies, clientCount)
+        return CallbackSnapshot(capability, frequencies, clientMacs)
     }
 
     private companion object {

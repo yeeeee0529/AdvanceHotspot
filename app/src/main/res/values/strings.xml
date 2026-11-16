@@ -19,6 +19,7 @@
     <string name="value_unknown">未知</string>
 
     <string name="tab_hotspot">熱點</string>
+    <string name="tab_devices">裝置</string>
     <string name="tab_environment">環境</string>
 
     <string name="action_save">儲存</string>
@@ -67,4 +68,16 @@
     <string name="error_six_ghz_requires_wpa3">6 GHz 頻段必須使用 WPA3。</string>
     <string name="error_channel_unsupported">這個頻段不支援所選的頻道。</string>
     <string name="error_max_clients_range">最大連線裝置數超過這台裝置支援的上限。</string>
+
+    <string name="action_cancel">取消</string>
+    <string name="action_rename">重新命名</string>
+    <string name="action_block">封鎖</string>
+    <string name="action_unblock">解除封鎖</string>
+    <string name="devices_connected_title">已連線（%1$d）</string>
+    <string name="devices_connected_empty">目前沒有裝置連線。</string>
+    <string name="devices_blocked_title">已封鎖（%1$d）</string>
+    <string name="device_unknown_name">未知裝置</string>
+    <string name="rename_title">重新命名裝置</string>
+    <string name="rename_label">暱稱</string>
+    <string name="rename_hint">留空會改回顯示裝置自己回報的名稱。</string>
 </resources>

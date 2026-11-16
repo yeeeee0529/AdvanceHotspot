@@ -20,11 +20,29 @@ class HotspotController(private val apkPath: String) {
 
     /** 寫入設定並回傳系統實際儲存的結果。 */
     suspend fun applyConfig(config: HotspotConfig): HotspotConfig {
-        val encoded = Base64.encodeToString(
-            config.toJson().toString().toByteArray(Charsets.UTF_8),
-            Base64.URL_SAFE or Base64.NO_WRAP,
+        return parseConfig(invoke("set-config", encode(config.toJson())).getJSONObject("config"))
+    }
+
+    suspend fun clients(): ClientSnapshot {
+        val json = invoke("clients")
+        val clients = json.getJSONArray("clients")
+        return ClientSnapshot(
+            clients = List(clients.length()) { index ->
+                val client = clients.getJSONObject(index)
+                ConnectedClient(
+                    mac = client.getString("mac"),
+                    ip = client.getString("ip").ifEmpty { null },
+                    hostname = client.getString("hostname").ifEmpty { null },
+                )
+            },
+            blockedMacs = json.getJSONArray("blocked").toStringList(),
         )
-        return parseConfig(invoke("set-config", encoded).getJSONObject("config"))
+    }
+
+    /** 以新的清單取代封鎖名單，回傳系統實際儲存的結果。 */
+    suspend fun setBlocked(macs: Collection<String>): List<String> {
+        val payload = JSONObject().put("blocked", JSONArray(macs))
+        return invoke("set-blocked", encode(payload)).getJSONArray("blocked").toStringList()
     }
 
     suspend fun start() {
@@ -101,7 +119,14 @@ class HotspotController(private val apkPath: String) {
         .put("maxClients", maxClients)
         .put("autoShutdown", autoShutdown)
 
+    private fun encode(json: JSONObject): String = Base64.encodeToString(
+        json.toString().toByteArray(Charsets.UTF_8),
+        Base64.URL_SAFE or Base64.NO_WRAP,
+    )
+
     private fun JSONArray.toIntList(): List<Int> = List(length()) { getInt(it) }
+
+    private fun JSONArray.toStringList(): List<String> = List(length()) { getString(it) }
 
     private companion object {
         const val SHELL_UID = 2000

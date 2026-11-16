@@ -46,6 +46,7 @@ KernelSU does not prompt for root. Open the KernelSU manager, enable superuser f
 | `app/src/main/kotlin/.../root` | Single entry point for root commands (libsu) |
 | `app/src/main/kotlin/.../helper` | Command-line helper run with `app_process` as the shell user; calls hidden SoftAP and tethering APIs |
 | `app/src/main/kotlin/.../hotspot` | Hotspot model, validation, and the controller that invokes the helper |
+| `app/src/main/kotlin/.../devices` | Per-device annotations stored by MAC address |
 | `app/src/main/kotlin/.../system` | Device and network probing, command output parsers |
 | `app/src/main/kotlin/.../ui` | Jetpack Compose screens and view models |
 
@@ -57,4 +58,4 @@ A forced channel takes effect even while the phone is connected to Wi-Fi on a di
 
 ## Status
 
-Phases 1 and 2 are done. The app reads and writes SSID, security type, passphrase, band, channel, maximum client count, hidden SSID and auto shutdown, and turns the hotspot on and off. The connected device list, routing, intranet and rate limiting are not implemented yet. See the phase table in the [overview](../../README.md#status).
+Phases 1 to 3 are done. The app reads and writes SSID, security type, passphrase, band, channel, maximum client count, hidden SSID and auto shutdown, and turns the hotspot on and off. The Devices tab lists connected devices with hostname, IP address and MAC address, lets you give each a nickname, and blocks or unblocks a device by MAC address. Routing, intranet and rate limiting are not implemented yet. See the phase table in the [overview](../../README.md#status).
