@@ -48,6 +48,10 @@ import me.yeeeee.advancehotspot.R
 import me.yeeeee.advancehotspot.routing.DevicePolicy
 import me.yeeeee.advancehotspot.routing.Egress
 import me.yeeeee.advancehotspot.routing.ResolvedEgress
+import me.yeeeee.advancehotspot.traffic.TrafficLimit
+import me.yeeeee.advancehotspot.traffic.TrafficStats
+import me.yeeeee.advancehotspot.traffic.formatBytes
+import me.yeeeee.advancehotspot.traffic.formatRate
 
 private const val REFRESH_INTERVAL_MS = 4000L
 
@@ -56,6 +60,7 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
     val state by viewModel.state.collectAsStateWithLifecycle()
     var renamingMac by rememberSaveable { mutableStateOf<String?>(null) }
     var staticIpMac by rememberSaveable { mutableStateOf<String?>(null) }
+    var limitMac by rememberSaveable { mutableStateOf<String?>(null) }
     // 前景服務的通知需要這個權限才看得到；使用者拒絕時服務仍會執行
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
@@ -115,6 +120,9 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
             IntranetCard(state, viewModel::setIntranetEnabled, viewModel::setGateway)
         }
         item {
+            TrafficCard(state.trafficEnabled, viewModel::setTrafficEnabled, viewModel::resetTraffic)
+        }
+        item {
             Text(
                 stringResource(R.string.devices_connected_title, state.connected.size),
                 style = MaterialTheme.typography.titleMedium,
@@ -139,6 +147,11 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
                 onToggleBlock = { viewModel.setBlocked(device.mac, true) },
                 routing = if (state.routingEnabled) {
                     DeviceRouting(state.defaultEgress, state.resolvedEgress) { viewModel.setPolicy(device.mac, it) }
+                } else {
+                    null
+                },
+                traffic = if (state.trafficEnabled) {
+                    DeviceTraffic(state.traffic[device.mac] ?: TrafficStats()) { limitMac = device.mac }
                 } else {
                     null
                 },
@@ -187,6 +200,15 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
         }
     }
 
+    limitMac?.let { mac ->
+        val device = state.connected.firstOrNull { it.mac == mac }
+        LimitDialog(
+            initial = device?.limit ?: TrafficLimit(),
+            onConfirm = { viewModel.setLimit(mac, it) },
+            onDismiss = { limitMac = null },
+        )
+    }
+
     staticIpMac?.let { mac ->
         val device = (state.connected + state.offline + state.blocked).firstOrNull { it.mac == mac }
         TextInputDialog(
@@ -228,6 +250,7 @@ private fun DeviceCard(
     onToggleBlock: () -> Unit,
     routing: DeviceRouting? = null,
     onStaticIp: (() -> Unit)? = null,
+    traffic: DeviceTraffic? = null,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 4.dp)) {
@@ -264,6 +287,37 @@ private fun DeviceCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            if (traffic != null) {
+                Text(
+                    stringResource(
+                        R.string.traffic_rates,
+                        formatRate(traffic.stats.upRate),
+                        formatRate(traffic.stats.downRate),
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Text(
+                    stringResource(
+                        R.string.traffic_totals,
+                        formatBytes(traffic.stats.upBytes),
+                        formatBytes(traffic.stats.downBytes),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (!device.limit.isUnlimited) {
+                    Text(
+                        stringResource(
+                            R.string.traffic_limit_summary,
+                            limitLabel(device.limit.upKbit),
+                            limitLabel(device.limit.downKbit),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             if (routing != null) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
                     Text(
@@ -287,6 +341,9 @@ private fun DeviceCard(
                 }
             }
             Row(Modifier.align(Alignment.End)) {
+                if (traffic != null) {
+                    TextButton(onClick = traffic.onLimit) { Text(stringResource(R.string.action_limit)) }
+                }
                 if (onStaticIp != null) {
                     TextButton(onClick = onStaticIp) { Text(stringResource(R.string.action_static_ip)) }
                 }
@@ -391,6 +448,110 @@ private fun EgressStatus(egress: Egress, resolved: Map<Egress, ResolvedEgress>) 
         },
         style = MaterialTheme.typography.bodySmall,
         color = if (target != null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+    )
+}
+
+/** 流量功能啟用時，裝置卡片額外需要的資料與回呼。 */
+private class DeviceTraffic(val stats: TrafficStats, val onLimit: () -> Unit)
+
+/** 上限以 Mbps 顯示；0 代表不限制。 */
+@Composable
+private fun limitLabel(kbit: Int): String =
+    if (kbit == 0) stringResource(R.string.traffic_unlimited) else formatMbps(kbit) + " Mbps"
+
+private fun formatMbps(kbit: Int): String = (kbit / 1000.0).toBigDecimal().stripTrailingZeros().toPlainString()
+
+/** 把使用者輸入的 Mbps 轉成 kbit/s；空白代表不限制，無法解析或超出範圍時回傳 null。 */
+private fun parseMbps(text: String): Int? {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return 0
+    val mbps = trimmed.toDoubleOrNull() ?: return null
+    if (mbps < 0 || mbps > MAX_LIMIT_MBPS) return null
+    return (mbps * 1000).toInt()
+}
+
+private const val MAX_LIMIT_MBPS = 10_000.0
+
+@Composable
+private fun TrafficCard(enabled: Boolean, onToggle: (Boolean) -> Unit, onReset: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.traffic_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(checked = enabled, onCheckedChange = onToggle)
+            }
+            Text(
+                stringResource(R.string.traffic_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (enabled) {
+                TextButton(onClick = onReset, modifier = Modifier.align(Alignment.End)) {
+                    Text(stringResource(R.string.action_reset_traffic))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LimitDialog(initial: TrafficLimit, onConfirm: (TrafficLimit) -> Unit, onDismiss: () -> Unit) {
+    var upText by rememberSaveable { mutableStateOf(if (initial.upKbit == 0) "" else formatMbps(initial.upKbit)) }
+    var downText by rememberSaveable { mutableStateOf(if (initial.downKbit == 0) "" else formatMbps(initial.downKbit)) }
+    var invalid by rememberSaveable { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.limit_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((label, text, onChange) in listOf(
+                    Triple(R.string.limit_download, downText) { value: String -> downText = value },
+                    Triple(R.string.limit_upload, upText) { value: String -> upText = value },
+                )) {
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = {
+                            onChange(it)
+                            invalid = false
+                        },
+                        label = { Text(stringResource(label)) },
+                        placeholder = { Text(stringResource(R.string.traffic_unlimited)) },
+                        isError = invalid,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                    )
+                }
+                Text(
+                    stringResource(if (invalid) R.string.limit_error else R.string.limit_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (invalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val up = parseMbps(upText)
+                    val down = parseMbps(downText)
+                    if (up == null || down == null) {
+                        invalid = true
+                    } else {
+                        onConfirm(TrafficLimit(upKbit = up, downKbit = down))
+                        onDismiss()
+                    }
+                },
+            ) {
+                Text(stringResource(R.string.action_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
     )
 }
 

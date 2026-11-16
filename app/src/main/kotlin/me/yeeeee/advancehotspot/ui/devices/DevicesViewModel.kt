@@ -24,6 +24,9 @@ import me.yeeeee.advancehotspot.routing.ResolvedEgress
 import me.yeeeee.advancehotspot.routing.RoutingRuntime
 import me.yeeeee.advancehotspot.routing.RoutingStatus
 import me.yeeeee.advancehotspot.routing.RoutingStore
+import me.yeeeee.advancehotspot.traffic.TrafficLimit
+import me.yeeeee.advancehotspot.traffic.TrafficStats
+import me.yeeeee.advancehotspot.traffic.TrafficStore
 
 data class DeviceItem(
     val mac: String,
@@ -34,6 +37,7 @@ data class DeviceItem(
     /** 這台裝置在內網中的完整名稱，例如 `nas.lan`。 */
     val localName: String? = null,
     val staticIp: String? = null,
+    val limit: TrafficLimit = TrafficLimit(),
 )
 
 data class DevicesUiState(
@@ -52,6 +56,9 @@ data class DevicesUiState(
     val routingStatus: RoutingStatus = RoutingStatus(),
     val intranetEnabled: Boolean = false,
     val gateway: String = "",
+    val trafficEnabled: Boolean = false,
+    /** 各裝置（MAC）的累計用量與即時速率。 */
+    val traffic: Map<String, TrafficStats> = emptyMap(),
 )
 
 class DevicesViewModel(application: Application) : AndroidViewModel(application) {
@@ -59,6 +66,7 @@ class DevicesViewModel(application: Application) : AndroidViewModel(application)
     private val store = DeviceStore(application)
     private val routingStore = RoutingStore(application)
     private val intranetStore = IntranetStore(application)
+    private val trafficStore = TrafficStore(application)
     private val resolver = EgressResolver(application)
     private val _state = MutableStateFlow(
         DevicesUiState(
@@ -66,6 +74,7 @@ class DevicesViewModel(application: Application) : AndroidViewModel(application)
             defaultEgress = routingStore.defaultEgress,
             intranetEnabled = intranetStore.enabled,
             gateway = intranetStore.gateway,
+            trafficEnabled = trafficStore.enabled,
         ),
     )
     val state: StateFlow<DevicesUiState> = _state.asStateFlow()
@@ -78,6 +87,9 @@ class DevicesViewModel(application: Application) : AndroidViewModel(application)
         RoutingRuntime.sync(application)
         viewModelScope.launch {
             RoutingRuntime.status.collect { status -> _state.update { it.copy(routingStatus = status) } }
+        }
+        viewModelScope.launch {
+            RoutingRuntime.traffic.collect { traffic -> _state.update { it.copy(traffic = traffic) } }
         }
     }
 
@@ -120,6 +132,20 @@ class DevicesViewModel(application: Application) : AndroidViewModel(application)
         routingStore.enabled = enabled
         _state.update { it.copy(routingEnabled = enabled) }
         RoutingRuntime.sync(getApplication())
+    }
+
+    fun setTrafficEnabled(enabled: Boolean) {
+        trafficStore.enabled = enabled
+        _state.update { it.copy(trafficEnabled = enabled) }
+        RoutingRuntime.sync(getApplication())
+    }
+
+    fun resetTraffic() = RoutingRuntime.resetTraffic()
+
+    fun setLimit(mac: String, limit: TrafficLimit) {
+        trafficStore.setLimit(mac, limit)
+        latest?.let(::show)
+        RoutingRuntime.requestApply()
     }
 
     fun setIntranetEnabled(enabled: Boolean) {
@@ -168,6 +194,7 @@ class DevicesViewModel(application: Application) : AndroidViewModel(application)
         val policies = routingStore.policies()
         val connectedMacs = snapshot.clients.map { it.mac }.toSet()
         val staticLeases = intranetStore.staticLeases()
+        val limits = trafficStore.limits()
         // 與服務產生名稱檔時使用相同的規則，畫面顯示的名稱才會與實際可解析的一致
         val hosts = if (intranetStore.enabled) {
             val gateway = intranetStore.gateway
@@ -193,6 +220,7 @@ class DevicesViewModel(application: Application) : AndroidViewModel(application)
                         policy = policies[client.mac] ?: DevicePolicy(),
                         localName = hosts.fqdnOf(client.ip),
                         staticIp = staticLeases[client.mac],
+                        limit = limits[client.mac] ?: TrafficLimit(),
                     )
                 },
                 blocked = snapshot.blockedMacs.map { mac ->

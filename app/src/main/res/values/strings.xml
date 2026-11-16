@@ -115,4 +115,18 @@
     <string name="static_ip_label">IP 位址</string>
     <string name="static_ip_hint">必須在 %1$s.x 網段內；留空會取消固定 IP。</string>
     <string name="static_ip_error">位址不在內網網段內，或與閘道相同。</string>
+
+    <string name="traffic_title">流量統計與限速</string>
+    <string name="traffic_description">統計每台裝置的即時速率與累計用量，並可個別限制上傳與下載速率。啟用時會停用系統的熱點轉送加速。</string>
+    <string name="action_reset_traffic">重設累計用量</string>
+    <string name="action_limit">限速</string>
+    <string name="traffic_rates">↑ %1$s　↓ %2$s</string>
+    <string name="traffic_totals">累計　↑ %1$s　↓ %2$s</string>
+    <string name="traffic_limit_summary">上限　↑ %1$s　↓ %2$s</string>
+    <string name="traffic_unlimited">不限制</string>
+    <string name="limit_title">設定速率上限</string>
+    <string name="limit_download">下載上限（Mbps）</string>
+    <string name="limit_upload">上傳上限（Mbps）</string>
+    <string name="limit_hint">留空代表不限制，可輸入小數，例如 0.5。</string>
+    <string name="limit_error">請輸入 0 到 10000 之間的數字。</string>
 </resources>

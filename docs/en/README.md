@@ -48,6 +48,7 @@ KernelSU does not prompt for root. Open the KernelSU manager, enable superuser f
 | `app/src/main/kotlin/.../hotspot` | Hotspot model, validation, and the controller that invokes the helper |
 | `app/src/main/kotlin/.../devices` | Per-device annotations stored by MAC address |
 | `app/src/main/kotlin/.../routing` | Routing policy, rule script generator, egress resolution and the foreground service |
+| `app/src/main/kotlin/.../traffic` | Counting and rate limit rules, counter parsing, stored limits and totals |
 | `app/src/main/kotlin/.../intranet` | Custom subnet settings and the script generator that manages dnsmasq and the DHCP redirect |
 | `app/src/main/kotlin/.../system` | Device and network probing, command output parsers |
 | `app/src/main/kotlin/.../ui` | Jetpack Compose screens and view models |
@@ -100,6 +101,20 @@ Known limits:
 - A device bound to a specific egress has its DNS redirected to that network's DNS server and cannot resolve `.lan` names.
 - Client isolation was verified as a stored setting only. That devices are actually isolated from each other was not tested.
 
+## How traffic statistics and rate limits work
+
+Turn on "traffic statistics and rate limit" in the Devices tab. The foreground service adds one counting rule per device and direction and reads the counters every two seconds to show live rates and running totals. Totals are stored per MAC address and survive restarts until you reset them.
+
+A rate limit is a second rule in front of the counting rule that drops packets above the configured rate (`hashlimit`). This is policing, not queueing: TCP slows down to roughly the limit, and the measured speed fluctuates around it rather than sitting exactly on it.
+
+The system's tethering BPF offload programs are removed from every interface while this is on, because offloaded packets skip netfilter and would be neither counted nor limited.
+
+Known limits:
+
+- Limits apply to IPv4 only. IPv6 traffic is neither counted nor limited.
+- Only connected devices can be given a limit.
+- The limiter was verified to drop packets above the rate, but not measured against a real download on a client.
+
 ## Status
 
-Phases 1 to 5 are done. The app configures and toggles the hotspot, lists connected devices with nickname and MAC blocking, controls each device's internet access and egress with a kill switch, and provides a custom subnet with static IP bindings, local DNS names and client isolation. Rate limiting and traffic statistics are not implemented yet. See the phase table in the [overview](../../README.md#status).
+All six planned phases are done. The app configures and toggles the hotspot, lists connected devices with nickname and MAC blocking, controls each device's internet access and egress with a kill switch, provides a custom subnet with static IP bindings, local DNS names and client isolation, and shows per-device traffic with optional rate limits. See the phase table in the [overview](../../README.md#status).

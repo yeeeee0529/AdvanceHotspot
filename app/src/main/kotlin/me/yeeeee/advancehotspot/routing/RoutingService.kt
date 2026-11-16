@@ -14,6 +14,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.IBinder
+import android.os.SystemClock
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CoroutineScope
@@ -39,7 +40,18 @@ import me.yeeeee.advancehotspot.intranet.subnetOf
 import me.yeeeee.advancehotspot.intranet.toScript
 import me.yeeeee.advancehotspot.hotspot.ClientSnapshot
 import me.yeeeee.advancehotspot.hotspot.HotspotController
+import me.yeeeee.advancehotspot.root.CommandResult
 import me.yeeeee.advancehotspot.root.RootShell
+import me.yeeeee.advancehotspot.traffic.Counter
+import me.yeeeee.advancehotspot.traffic.TRAFFIC_COUNTERS_COMMAND
+import me.yeeeee.advancehotspot.traffic.TrafficClient
+import me.yeeeee.advancehotspot.traffic.TrafficLimit
+import me.yeeeee.advancehotspot.traffic.TrafficStats
+import me.yeeeee.advancehotspot.traffic.TrafficStore
+import me.yeeeee.advancehotspot.traffic.buildTrafficScript
+import me.yeeeee.advancehotspot.traffic.counterDelta
+import me.yeeeee.advancehotspot.traffic.parseCounters
+import me.yeeeee.advancehotspot.traffic.trafficTeardownScript
 
 data class RoutingStatus(
     val running: Boolean = false,
@@ -53,6 +65,17 @@ data class RoutingStatus(
 object RoutingRuntime {
     val status = MutableStateFlow(RoutingStatus())
 
+    /** 各裝置（MAC）的累計用量與即時速率。 */
+    val traffic = MutableStateFlow<Map<String, TrafficStats>>(emptyMap())
+
+    private val resets = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    internal val trafficResets = resets.asSharedFlow()
+
+    /** 清除所有裝置的累計用量。 */
+    fun resetTraffic() {
+        resets.tryEmit(Unit)
+    }
+
     private val requests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     internal val applyRequests = requests.asSharedFlow()
 
@@ -64,7 +87,7 @@ object RoutingRuntime {
     /** 依目前的設定啟動或停止服務：路由控制或自訂內網任一項啟用就需要它。 */
     fun sync(context: Context) {
         val intent = Intent(context, RoutingService::class.java)
-        if (RoutingStore(context).enabled || IntranetStore(context).enabled) {
+        if (RoutingStore(context).enabled || IntranetStore(context).enabled || TrafficStore(context).enabled) {
             context.startForegroundService(intent)
             requestApply()
         } else {
@@ -85,6 +108,7 @@ class RoutingService : Service() {
     private lateinit var store: RoutingStore
     private lateinit var intranetStore: IntranetStore
     private lateinit var deviceStore: DeviceStore
+    private lateinit var trafficStore: TrafficStore
     private lateinit var resolver: EgressResolver
     private lateinit var controller: HotspotController
     private lateinit var connectivityManager: ConnectivityManager
@@ -95,6 +119,15 @@ class RoutingService : Service() {
     /** 內網目前套用在哪個介面與閘道上，用於之後移除。 */
     private var intranetApplied: Pair<String, String>? = null
     private var lastLeases: List<String> = emptyList()
+
+    private var trafficApplied = false
+
+    /** 目前計數規則涵蓋的 IP 與其對應的 MAC。 */
+    private var trafficIps: Map<String, String> = emptyMap()
+    private var lastCounters: Map<String, Counter> = emptyMap()
+
+    /** 各裝置（MAC）的累計用量。 */
+    private val totals = mutableMapOf<String, Counter>()
     private var cellularHold: ConnectivityManager.NetworkCallback? = null
 
     /** 任何網路的出現、消失或屬性改變都可能影響出口對應。 */
@@ -111,6 +144,9 @@ class RoutingService : Service() {
         store = RoutingStore(this)
         intranetStore = IntranetStore(this)
         deviceStore = DeviceStore(this)
+        trafficStore = TrafficStore(this)
+        totals.putAll(trafficStore.totals())
+        publishTraffic(resetRates = true)
         resolver = EgressResolver(this)
         controller = HotspotController(applicationInfo.sourceDir)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
@@ -134,6 +170,14 @@ class RoutingService : Service() {
         }
         scope.launch(Dispatchers.IO) { watchClients() }
         scope.launch { watchLeases() }
+        scope.launch { pollTraffic() }
+        scope.launch {
+            RoutingRuntime.trafficResets.collect {
+                totals.clear()
+                trafficStore.saveTotals(totals)
+                publishTraffic(resetRates = true)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
@@ -143,12 +187,14 @@ class RoutingService : Service() {
         releaseCellular()
         scope.cancel()
         RoutingRuntime.status.value = RoutingStatus()
+        trafficStore.saveTotals(totals)
         // 服務的 scope 已取消，收尾工作交給獨立的 scope 完成
         CoroutineScope(Dispatchers.IO).launch {
             val (iface, gateway) = intranetApplied ?: (null to intranetStore.gateway)
             RootShell.run(
                 "pkill -f '$WATCH_PROCESS_PATTERN'",
                 routingTeardownScript(),
+                trafficTeardownScript(),
                 intranetTeardownScript(iface, gateway, intranetStore.directory),
             )
         }
@@ -228,10 +274,8 @@ class RoutingService : Service() {
         if (downstream == null) {
             // 熱點未開啟：移除殘留規則
             applyIntranet(null, emptyList())
-            if (rulesApplied) {
-                RootShell.run(routingTeardownScript())
-                rulesApplied = false
-            }
+            applyRouting(null, emptyList())
+            applyTraffic(null, emptyList())
             RoutingRuntime.status.value = RoutingStatus(running = true)
             return
         }
@@ -242,15 +286,28 @@ class RoutingService : Service() {
             emptyList()
         }
         val current = intranetStore.mergeLeases(systemSnapshot)
-        val intranetError = applyIntranet(downstream, current.clients)
+        val errors = listOfNotNull(
+            applyIntranet(downstream, current.clients),
+            applyRouting(downstream, current.clients),
+            // 必須最後套用，它的鏈才會排在路由規則之前
+            applyTraffic(downstream, current.clients),
+        )
+        RoutingRuntime.status.value = RoutingStatus(
+            running = true,
+            downstream = downstream,
+            error = errors.firstOrNull(),
+        )
+    }
 
-        if (!store.enabled) {
+    /** 套用或移除每裝置路由規則，回傳錯誤訊息；成功時回傳 null。 */
+    private suspend fun applyRouting(downstream: Downstream?, clients: List<ConnectedClient>): String? {
+        if (downstream == null || !store.enabled) {
             if (rulesApplied) {
                 RootShell.run(routingTeardownScript())
                 rulesApplied = false
             }
-            RoutingRuntime.status.value = RoutingStatus(running = true, downstream = downstream, error = intranetError)
-            return
+            releaseCellular()
+            return null
         }
 
         val policies = store.policies()
@@ -259,26 +316,104 @@ class RoutingService : Service() {
 
         val plan = buildRoutingPlan(
             downstream = downstream,
-            clients = current.clients,
+            clients = clients,
             policies = policies,
             defaultEgress = defaultEgress,
             resolved = resolver.resolve(downstream.iface),
             extraSubnets = listOfNotNull(intranetApplied?.let { subnetOf(it.second) }),
         )
-        val result = try {
-            RootShell.run(plan.toScript())
+        return try {
+            val result = RootShell.run(plan.toScript())
+            rulesApplied = true
+            result.errorOrNull("routing")
         } catch (exception: IllegalArgumentException) {
-            RoutingRuntime.status.value = RoutingStatus(running = true, error = exception.message)
-            return
+            exception.message
         }
-        rulesApplied = true
-        RoutingRuntime.status.value = RoutingStatus(
-            running = true,
-            downstream = downstream,
-            error = intranetError
-                ?: if (result.isSuccess) null else result.stderr.takeLast(3).joinToString(" | ").ifEmpty { "exit ${result.exitCode}" },
-        )
     }
+
+    /** 套用或移除計數與限速規則，回傳錯誤訊息；成功時回傳 null。 */
+    private suspend fun applyTraffic(downstream: Downstream?, clients: List<ConnectedClient>): String? {
+        if (downstream == null || !trafficStore.enabled) {
+            if (trafficApplied) {
+                accumulate(RootShell.run(trafficTeardownScript()).stdout, elapsedMs = null)
+                trafficApplied = false
+                trafficIps = emptyMap()
+                lastCounters = emptyMap()
+                publishTraffic(resetRates = true)
+                trafficStore.saveTotals(totals)
+            }
+            return null
+        }
+
+        val limits = trafficStore.limits()
+        val withAddress = clients.filter { it.ip != null }
+        return try {
+            val script = buildTrafficScript(
+                downstream.iface,
+                withAddress.map { TrafficClient(it.ip!!, limits[it.mac] ?: TrafficLimit()) },
+            )
+            val result = RootShell.run(script)
+            // 腳本開頭印出重建前的計數，先計入累計值；重建後計數從零開始
+            accumulate(result.stdout, elapsedMs = null)
+            trafficIps = withAddress.associate { it.ip!! to it.mac }
+            lastCounters = emptyMap()
+            trafficApplied = true
+            result.errorOrNull("traffic")
+        } catch (exception: IllegalArgumentException) {
+            exception.message
+        }
+    }
+
+    /** 定期讀取計數器，更新累計用量與即時速率。 */
+    private suspend fun pollTraffic() {
+        var lastPoll = SystemClock.elapsedRealtime()
+        var lastSave = lastPoll
+        while (scope.isActive) {
+            delay(TRAFFIC_POLL_INTERVAL_MS)
+            val now = SystemClock.elapsedRealtime()
+            if (trafficApplied) {
+                accumulate(RootShell.run(TRAFFIC_COUNTERS_COMMAND).stdout, elapsedMs = now - lastPoll)
+                if (now - lastSave >= TRAFFIC_SAVE_INTERVAL_MS) {
+                    trafficStore.saveTotals(totals)
+                    lastSave = now
+                }
+            }
+            lastPoll = now
+        }
+    }
+
+    /**
+     * 把一次計數器讀數與上一次的差額計入各裝置的累計值。
+     *
+     * @param elapsedMs 距離上一次讀數的時間；為 null 時只更新累計值，不計算速率。
+     */
+    private fun accumulate(lines: List<String>, elapsedMs: Long?) {
+        val counters = parseCounters(lines)
+        val rates = mutableMapOf<String, Counter>()
+        for ((ip, counter) in counters) {
+            val mac = trafficIps[ip] ?: continue
+            val previous = lastCounters[ip] ?: Counter(0, 0)
+            val up = counterDelta(previous.up, counter.up)
+            val down = counterDelta(previous.down, counter.down)
+            val total = totals[mac] ?: Counter(0, 0)
+            totals[mac] = Counter(total.up + up, total.down + down)
+            if (elapsedMs != null && elapsedMs > 0) {
+                rates[mac] = Counter(up * 1000 / elapsedMs, down * 1000 / elapsedMs)
+            }
+        }
+        lastCounters = counters
+        if (elapsedMs != null) publishTraffic(resetRates = false, rates = rates)
+    }
+
+    private fun publishTraffic(resetRates: Boolean, rates: Map<String, Counter> = emptyMap()) {
+        RoutingRuntime.traffic.value = totals.mapValues { (mac, total) ->
+            val rate = if (resetRates) null else rates[mac]
+            TrafficStats(total.up, total.down, rate?.up ?: 0, rate?.down ?: 0)
+        }
+    }
+
+    private fun CommandResult.errorOrNull(label: String): String? =
+        if (isSuccess) null else stderr.takeLast(3).joinToString(" | ").ifEmpty { "$label exit $exitCode" }
 
     /**
      * 手機連著 Wi-Fi 時系統會關閉行動網路；有裝置指定走行動網路時，持有一個請求讓它保持連線。
@@ -326,6 +461,8 @@ class RoutingService : Service() {
         const val DEBOUNCE_MS = 300L
         const val WATCH_RESTART_DELAY_MS = 3000L
         const val LEASE_POLL_INTERVAL_MS = 4000L
+        const val TRAFFIC_POLL_INTERVAL_MS = 2000L
+        const val TRAFFIC_SAVE_INTERVAL_MS = 60_000L
         const val WATCH_PROCESS_PATTERN = "HelperMain watch"
     }
 }
