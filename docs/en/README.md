@@ -104,7 +104,7 @@ Turn on "custom intranet" in the Network tab. The same foreground service then t
 - NAT rules apply only to the first packet of a connection, and every device's DHCP broadcast shares one conntrack entry. If devices are already retrying DHCP when the rules change, the old entry never times out. The app temporarily drops DHCP requests in the raw table until the old entry expires (up to about 30 seconds), then lets them through.
 - While the phone is on a VPN, the system routes packets from root processes into the VPN. The app adds an `ip rule` at priority 10500 so that packets from the phone to the intranet always leave through the hotspot interface; otherwise DHCP and DNS replies never reach the devices.
 - Static IP bindings are written to a dnsmasq hosts file keyed by MAC address.
-- Local names are generated from each device's nickname, or its own hostname when there is no usable nickname, and resolve as `name.lan`. The gateway is `hotspot.lan`. Only letters, digits and hyphens are kept, so a nickname written entirely in Chinese falls back to the hostname.
+- Local names are generated from each device's nickname, or its own hostname when there is no usable nickname, and resolve as `name.lan`. The gateway is `hotspot.lan`. Only letters, digits and hyphens are kept, so a nickname written entirely in Chinese falls back to the hostname. A device with neither (many phones send no hostname in DHCP) gets `device-<last octet of its IP>.lan`, for example `device-24.lan`.
 - Client isolation is a hotspot setting in the Hotspot tab. It takes effect the next time the hotspot starts.
 
 Known limits:

@@ -56,11 +56,13 @@ class IntranetTest {
                 HostEntry("10.77.0.10", "nas"),
                 HostEntry("10.77.0.11", "iphone"),
                 HostEntry("10.77.0.12", "iphone-2"),
+                HostEntry("10.77.0.13", "device-13"),
             ),
             entries,
         )
         assertEquals("nas.lan", entries.fqdnOf("10.77.0.10"))
-        assertNull(entries.fqdnOf("10.77.0.13"))
+        assertEquals("device-13.lan", entries.fqdnOf("10.77.0.13"))
+        assertNull(entries.fqdnOf("10.77.0.14"))
     }
 
     @Test

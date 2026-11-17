@@ -83,8 +83,11 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - **Per-chain packet counters reset on every apply**, because `iptables-restore --noflush` flushes the declared chains. Do not read a zero counter as proof that nothing matched.
 - **libsu verbose logging must stay off.** Helper output contains the hotspot passphrase and would be written to logcat.
 - **`adb shell input text` is unreliable on this phone.** The default keyboard is Zhuyin and swallows letters into its composing buffer. Fields with `KeyboardType.Decimal` or `Number` accept digits and dots correctly.
-- **The hotspot stops at 10 clients below the framework, not in this app.** Seen 2026-11-17 without root: the stored config has `maxClients` 0 (unlimited), `SoftApCapability` and `config_wifiHardwareSoftapMaxClientCount` both say 32, the framework's `maxClientSettingWhenReachHistogram` is empty (it never rejected anyone), yet the SoftAP metrics in `dumpsys wifi` climb to exactly 10 and then only flip between 9 and 10. The app's DHCP pool is .2 to .254, so it is not the limit either. The phone was in STA+AP concurrency on one 5 GHz channel (bcm4390). The likely cause is the firmware association limit (`maxassoc`) or hostapd `max_num_sta`; this is an inference, not confirmed, because `dmesg` and the hostapd config need root.
-- **A client gets a `.lan` name only if it has a nickname or sent a DHCP hostname.** `buildHostEntries` skips a client when both are missing. On 2026-11-17, 7 of 11 leases had hostname `*` and no nicknames were stored, so only 4 clients had names. Many phones do not send a hostname. This is a design gap, not a dnsmasq fault: the `hosts` file matched the named leases exactly.
+- **The 10-client cap is the Wi-Fi firmware's `maxassoc`, confirmed 2026-11-17.** The stored config has `maxClients` 0 (unlimited), `SoftApCapability` and `config_wifiHardwareSoftapMaxClientCount` say 32 and the framework never rejected anyone, yet the count climbs to exactly 10 and then flips between 9 and 10. Reading the iovar from the bcm4390 firmware gives `maxassoc = 10` on both the hotspot and the client interface (`bss_maxassoc = 19`). The driver module `bcmdhd4390.ko` contains no `maxassoc` string, so nothing on the host ever raises the firmware default, and the generated hostapd config has no `max_num_sta`. The firmware map has `wlc_ap_set_maxassoc` and `wlc_ap_get_maxassoc_limit`, so a set path exists, with an unknown upper bound. Nothing has been written to the firmware yet.
+- **How the iovar was read.** The phone has no `wl`, `iw` or `hostapd_cli`. A static arm64 binary that sends `WLC_GET_VAR` (262) through `SIOCDEVPRIVATE` with the `dhd_ioctl` struct (`cmd, buf, len, set, used, needed, driver=0`) works as root. This Mac has no NDK; `zig cc -target aarch64-linux-musl -static` (zig installed with Homebrew on 2026-11-17) builds it. The set counterpart is `WLC_SET_VAR` (263).
+- **Clients without a nickname or DHCP hostname now get `device-<last octet>.lan`.** Before 2026-11-17 `buildHostEntries` skipped them; 7 of 11 leases had hostname `*` and no nicknames were stored, so most clients had no name. Many phones send no hostname.
+- **`RoutingService` used to start only when the Devices or Network tab was opened.** After `adb install -r` or a process kill it stayed down until then, so the hosts file and rules were not refreshed. `MainActivity.onCreate` now calls `RoutingRuntime.sync`. It is not in `App.onCreate` on purpose: a process started in the background may not start a foreground service.
+- **toybox `nc -u -w` never exits when the peer stays silent or after the reply.** Use `timeout 5 nc -u -q 2 <ip> 53 < query.bin`. A raw DNS query through it is a workable resolver test, since the phone has no `nslookup`.
 - **Without root, `run-as me.yeeeee.advancehotspot` can still read `files/intranet/` (leases, hosts) and `shared_prefs`,** because the build is debuggable and the root-written files are world-readable. `dumpsys wifi` and `ip neigh` also work as the shell user.
 - **A blocked-then-unblocked client does not always redo DHCP.** It often keeps its lease. To force a fresh DHCP exchange, ask the owner to toggle Wi-Fi on the client.
 
@@ -96,6 +99,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 | Device list | Verified on device |
 | Internet switch, VPN egress, kill switch | Verified on device. On a real VPN drop only the rule swap was observed, not dropped packets |
 | Custom subnet, static lease, local DNS, rebuild after hotspot restart | Verified on device |
+| Fallback `device-<n>.lan` names and service start on app open | Verified on device 2026-11-17: all 8 connected clients listed in the hosts file, a raw DNS query for a fallback name returned the right address, dnsmasq was reloaded without a restart |
 | Intranet DHCP with clients already retrying and a VPN active on the phone | Verified on device 2026-11-16: three clients got leases and answered ping; DNS replies leave on the hotspot interface |
 | Conntrack expiry on intranet teardown (turning the intranet off with clients connected) | Not tested on device |
 | Traffic counters | Verified on device |
@@ -120,7 +124,9 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 
 - As found on 2026-11-16 (DHCP fix session), set by the owner and left unchanged: hotspot on with several clients, intranet on with a custom gateway, routing on, traffic on, and a VPN active on the phone. The routing chain currently drops all forwarding for every client; this is the owner's policy state, not something an agent set.
 - The app was updated in place (`adb install -r`) with the DHCP fix; settings and the root grant were kept.
-- `adb shell` no longer has root as of 2026-11-17 (`su: inaccessible or not found`, uid 2000). Not changed by an agent; do not re-grant it without the owner's request.
+- `adb shell` has root again; the owner re-granted it on 2026-11-17 after it had gone missing earlier that day.
+- The app was updated in place twice on 2026-11-17 (fallback names, service start). Clients stayed connected and both dnsmasq processes kept their pids.
+- Probe files pushed to `/data/local/tmp` on 2026-11-17 were removed.
 - Dark mode is on (`cmd uimode night yes`). Auto-rotate is on; its earlier value is unknown.
 
 ## Working with the phone
@@ -132,6 +138,8 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 ## Suggested next steps
 
 Nothing is in progress. Candidates, none of them started or agreed with the owner:
+
+00. Raise the firmware `maxassoc` above 10. Not started; needs the owner's go-ahead because a write to live firmware can drop every client. Open questions: whether the firmware accepts the set while the AP is up or only before it starts, what `wlc_ap_get_maxassoc_limit` allows, and how to ship it (a native binary in the APK needs the NDK, and the value must be re-applied on every hotspot start).
 
 0. Finish the on-device check of the new UI: floating save toolbar, device rows and sheet with a real client, and light theme.
 
@@ -145,12 +153,14 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 
 Newest entry first. Add one entry per working session.
 
-### 2026-11-17 (10-client cap and missing local DNS names, read-only)
+### 2026-11-17 (10-client cap and missing local DNS names)
 
-- Owner report: at most 10 devices can connect, and some devices have no local DNS name. The owner required that the live network not be interrupted, so everything was read-only: no code, rule, hotspot or phone setting was changed.
-- 10-client cap: not caused by this app or the framework setting; see the new finding. Unconfirmed at the driver level because `adb shell` had no root.
-- Missing names: clients without a nickname and without a DHCP hostname get no entry; see the new finding. Proposed fix, not started and not yet agreed: add a fallback label in `buildHostEntries` (for example derived from the address) so every client resolves.
-- Unfinished: confirm the firmware limit with root (`dmesg`, hostapd config, driver `maxassoc`) at a time when dropping clients is acceptable, and test whether turning the phone's own Wi-Fi client off raises the limit.
+- Owner report: at most 10 devices can connect, and some devices have no local DNS name. The owner required that the live network not be interrupted.
+- 10-client cap: confirmed as firmware `maxassoc = 10`, read-only; see the findings. Nothing was written to the firmware. Owner decision: research a bypass. Raising the value is the first suggested next step and still needs the owner's go-ahead for the live test.
+- Missing names: fixed with a fallback label in `buildHostEntries`, agreed by the owner, verified on the phone.
+- Found and fixed along the way: the service did not come back after an app update until the Devices or Network tab was opened.
+- Tooling change: installed `zig` with Homebrew to cross-compile the read-only probe, because the Mac has no NDK.
+- Checks: `assembleDebug` passes, 29 unit tests pass, lint 0 errors and the same 2 accepted warnings.
 
 ### 2026-11-16 (DHCP fix)
 

@@ -8,6 +8,9 @@ const val DEFAULT_GATEWAY = "10.77.0.1"
 /** 閘道本身在內網中的名稱。 */
 private const val GATEWAY_HOST_LABEL = "hotspot"
 
+/** 沒有暱稱也沒有主機名稱的裝置使用的名稱前綴，後面接 IP 的最後一段。 */
+private const val FALLBACK_HOST_PREFIX = "device"
+
 /** dnsmasq 實際監聽的 DHCP 埠；67 埠被系統的 DHCP 服務佔用，無法共用。 */
 private const val DHCP_ALTERNATE_PORT = 1067
 private const val DHCP_SERVER_PORT = 67
@@ -92,13 +95,17 @@ fun sanitizeHostLabel(raw: String?): String? {
 /**
  * 為每台裝置產生本地名稱；暱稱優先於裝置自己回報的主機名稱，重複的名稱會加上序號。
  *
+ * 許多裝置在 DHCP 時不會送出主機名稱，兩者都沒有時改用 IP 最後一段組成的備援名稱，
+ * 讓每台裝置都能被解析。
+ *
  * @param devices 每台裝置的 IP 與候選名稱（依優先順序）。
  */
 fun buildHostEntries(gateway: String, devices: List<Pair<String, List<String?>>>): List<HostEntry> {
     val used = mutableSetOf(GATEWAY_HOST_LABEL)
     val entries = mutableListOf(HostEntry(gateway, GATEWAY_HOST_LABEL))
     for ((ip, candidates) in devices) {
-        val base = candidates.firstNotNullOfOrNull(::sanitizeHostLabel) ?: continue
+        val base = candidates.firstNotNullOfOrNull(::sanitizeHostLabel)
+            ?: "$FALLBACK_HOST_PREFIX-${ip.substringAfterLast('.')}"
         var name = base
         var suffix = 2
         while (!used.add(name)) name = "${base.take(60)}-${suffix++}"
