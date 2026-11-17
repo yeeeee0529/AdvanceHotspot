@@ -2,7 +2,7 @@
 
 This file is the single place where agents hand work over to each other. Read it before doing anything else, and update it before you stop. The rules for maintaining it are in [AGENTS.md](AGENTS.md).
 
-Last updated: 2026-11-16
+Last updated: 2026-11-17
 
 ## Current state
 
@@ -83,6 +83,9 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - **Per-chain packet counters reset on every apply**, because `iptables-restore --noflush` flushes the declared chains. Do not read a zero counter as proof that nothing matched.
 - **libsu verbose logging must stay off.** Helper output contains the hotspot passphrase and would be written to logcat.
 - **`adb shell input text` is unreliable on this phone.** The default keyboard is Zhuyin and swallows letters into its composing buffer. Fields with `KeyboardType.Decimal` or `Number` accept digits and dots correctly.
+- **The hotspot stops at 10 clients below the framework, not in this app.** Seen 2026-11-17 without root: the stored config has `maxClients` 0 (unlimited), `SoftApCapability` and `config_wifiHardwareSoftapMaxClientCount` both say 32, the framework's `maxClientSettingWhenReachHistogram` is empty (it never rejected anyone), yet the SoftAP metrics in `dumpsys wifi` climb to exactly 10 and then only flip between 9 and 10. The app's DHCP pool is .2 to .254, so it is not the limit either. The phone was in STA+AP concurrency on one 5 GHz channel (bcm4390). The likely cause is the firmware association limit (`maxassoc`) or hostapd `max_num_sta`; this is an inference, not confirmed, because `dmesg` and the hostapd config need root.
+- **A client gets a `.lan` name only if it has a nickname or sent a DHCP hostname.** `buildHostEntries` skips a client when both are missing. On 2026-11-17, 7 of 11 leases had hostname `*` and no nicknames were stored, so only 4 clients had names. Many phones do not send a hostname. This is a design gap, not a dnsmasq fault: the `hosts` file matched the named leases exactly.
+- **Without root, `run-as me.yeeeee.advancehotspot` can still read `files/intranet/` (leases, hosts) and `shared_prefs`,** because the build is debuggable and the root-written files are world-readable. `dumpsys wifi` and `ip neigh` also work as the shell user.
 - **A blocked-then-unblocked client does not always redo DHCP.** It often keeps its lease. To force a fresh DHCP exchange, ask the owner to toggle Wi-Fi on the client.
 
 ## Verification status
@@ -117,7 +120,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 
 - As found on 2026-11-16 (DHCP fix session), set by the owner and left unchanged: hotspot on with several clients, intranet on with a custom gateway, routing on, traffic on, and a VPN active on the phone. The routing chain currently drops all forwarding for every client; this is the owner's policy state, not something an agent set.
 - The app was updated in place (`adb install -r`) with the DHCP fix; settings and the root grant were kept.
-- `adb shell` has root.
+- `adb shell` no longer has root as of 2026-11-17 (`su: inaccessible or not found`, uid 2000). Not changed by an agent; do not re-grant it without the owner's request.
 - Dark mode is on (`cmd uimode night yes`). Auto-rotate is on; its earlier value is unknown.
 
 ## Working with the phone
@@ -141,6 +144,13 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-17 (10-client cap and missing local DNS names, read-only)
+
+- Owner report: at most 10 devices can connect, and some devices have no local DNS name. The owner required that the live network not be interrupted, so everything was read-only: no code, rule, hotspot or phone setting was changed.
+- 10-client cap: not caused by this app or the framework setting; see the new finding. Unconfirmed at the driver level because `adb shell` had no root.
+- Missing names: clients without a nickname and without a DHCP hostname get no entry; see the new finding. Proposed fix, not started and not yet agreed: add a fallback label in `buildHostEntries` (for example derived from the address) so every client resolves.
+- Unfinished: confirm the firmware limit with root (`dmesg`, hostapd config, driver `maxassoc`) at a time when dropping clients is acceptable, and test whether turning the phone's own Wi-Fi client off raises the limit.
 
 ### 2026-11-16 (DHCP fix)
 
