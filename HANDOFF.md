@@ -83,8 +83,8 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - **Per-chain packet counters reset on every apply**, because `iptables-restore --noflush` flushes the declared chains. Do not read a zero counter as proof that nothing matched.
 - **libsu verbose logging must stay off.** Helper output contains the hotspot passphrase and would be written to logcat.
 - **`adb shell input text` is unreliable on this phone.** The default keyboard is Zhuyin and swallows letters into its composing buffer. Fields with `KeyboardType.Decimal` or `Number` accept digits and dots correctly.
-- **The 10-client cap is the Wi-Fi firmware's `maxassoc`, confirmed 2026-11-17.** The stored config has `maxClients` 0 (unlimited), `SoftApCapability` and `config_wifiHardwareSoftapMaxClientCount` say 32 and the framework never rejected anyone, yet the count climbs to exactly 10 and then flips between 9 and 10. Reading the iovar from the bcm4390 firmware gives `maxassoc = 10` on both the hotspot and the client interface (`bss_maxassoc = 19`). The driver module `bcmdhd4390.ko` contains no `maxassoc` string, so nothing on the host ever raises the firmware default, and the generated hostapd config has no `max_num_sta`. The firmware map has `wlc_ap_set_maxassoc` and `wlc_ap_get_maxassoc_limit`, so a set path exists, with an unknown upper bound. Nothing has been written to the firmware yet.
-- **How the iovar was read.** The phone has no `wl`, `iw` or `hostapd_cli`. A static arm64 binary that sends `WLC_GET_VAR` (262) through `SIOCDEVPRIVATE` with the `dhd_ioctl` struct (`cmd, buf, len, set, used, needed, driver=0`) works as root. This Mac has no NDK; `zig cc -target aarch64-linux-musl -static` (zig installed with Homebrew on 2026-11-17) builds it. The set counterpart is `WLC_SET_VAR` (263).
+- **The 10-client cap is the Wi-Fi firmware's `maxassoc`, confirmed 2026-11-17.** The stored config has `maxClients` 0 (unlimited), `SoftApCapability` and `config_wifiHardwareSoftapMaxClientCount` say 32 and the framework never rejected anyone, yet the count climbs to exactly 10 and then flips between 9 and 10. Reading the iovar from the bcm4390 firmware gives `maxassoc = 10` on both the hotspot and the client interface (`bss_maxassoc = 19`). The driver module `bcmdhd4390.ko` contains no `maxassoc` string, so nothing on the host ever raises the firmware default, and the generated hostapd config has no `max_num_sta`. The firmware map has `wlc_ap_set_maxassoc` and `wlc_ap_get_maxassoc_limit`, so a set path exists, but **10 is also the firmware's hard ceiling**: with the AP up, `WLC_SET_VAR maxassoc 10` succeeds while 11, 12, 16, 19, 24 and 32 all fail with `ERANGE` (firmware `BCME_RANGE`). The ceiling is compiled into the firmware image; the host-memory station extension the driver knows about (`max_scb_probe`, `host_scb`) is not supported by this firmware, and `dump tunables` does not list a station count. No iovar raises it. Do not spend more time on this path; the failed sets changed nothing and no client dropped.
+- **How the iovar was read.** The phone has no `wl`, `iw` or `hostapd_cli`. A static arm64 binary that sends `WLC_GET_VAR` (262) through `SIOCDEVPRIVATE` with the `dhd_ioctl` struct (`cmd, buf, len, set, used, needed, driver=0`) works as root. This Mac has no NDK; `zig cc -target aarch64-linux-musl -static` (zig installed with Homebrew on 2026-11-17) builds it. The set counterpart is `WLC_SET_VAR` (263) with `set=1` and the buffer `name\0` followed by a little-endian int32. Text dumps use `WLC_GET_VAR` with the buffer `dump\0<section>\0`.
 - **Clients without a nickname or DHCP hostname now get `device-<last octet>.lan`.** Before 2026-11-17 `buildHostEntries` skipped them; 7 of 11 leases had hostname `*` and no nicknames were stored, so most clients had no name. Many phones send no hostname.
 - **`RoutingService` used to start only when the Devices or Network tab was opened.** After `adb install -r` or a process kill it stayed down until then, so the hosts file and rules were not refreshed. `MainActivity.onCreate` now calls `RoutingRuntime.sync`. It is not in `App.onCreate` on purpose: a process started in the background may not start a foreground service.
 - **toybox `nc -u -w` never exits when the peer stays silent or after the reply.** Use `timeout 5 nc -u -q 2 <ip> 53 < query.bin`. A raw DNS query through it is a workable resolver test, since the phone has no `nslookup`.
@@ -126,7 +126,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - The app was updated in place (`adb install -r`) with the DHCP fix; settings and the root grant were kept.
 - `adb shell` has root again; the owner re-granted it on 2026-11-17 after it had gone missing earlier that day.
 - The app was updated in place twice on 2026-11-17 (fallback names, service start). Clients stayed connected and both dnsmasq processes kept their pids.
-- Probe files pushed to `/data/local/tmp` on 2026-11-17 were removed.
+- Probe files pushed to `/data/local/tmp` on 2026-11-17 were removed. Firmware `maxassoc` is at its original value of 10.
 - Dark mode is on (`cmd uimode night yes`). Auto-rotate is on; its earlier value is unknown.
 
 ## Working with the phone
@@ -139,7 +139,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 
 Nothing is in progress. Candidates, none of them started or agreed with the owner:
 
-00. Raise the firmware `maxassoc` above 10. Not started; needs the owner's go-ahead because a write to live firmware can drop every client. Open questions: whether the firmware accepts the set while the AP is up or only before it starts, what `wlc_ap_get_maxassoc_limit` allows, and how to ship it (a native binary in the APK needs the NDK, and the value must be re-applied on every hotspot start).
+00. More than 10 clients needs a route around the firmware, since the limit cannot be raised (see findings). Candidates, none started or agreed: put a travel router or repeater in NAT/WISP mode behind the hotspot so it counts as one client; feed an external access point through USB or Ethernet tethering; show the real limit of 10 in the max-clients hint instead of the 32 the framework reports.
 
 0. Finish the on-device check of the new UI: floating save toolbar, device rows and sheet with a real client, and light theme.
 
@@ -156,7 +156,7 @@ Newest entry first. Add one entry per working session.
 ### 2026-11-17 (10-client cap and missing local DNS names)
 
 - Owner report: at most 10 devices can connect, and some devices have no local DNS name. The owner required that the live network not be interrupted.
-- 10-client cap: confirmed as firmware `maxassoc = 10`, read-only; see the findings. Nothing was written to the firmware. Owner decision: research a bypass. Raising the value is the first suggested next step and still needs the owner's go-ahead for the live test.
+- 10-client cap: confirmed as firmware `maxassoc = 10`. Owner decision: research a bypass, then try it live. Result: the firmware rejects every value above 10, so it cannot be raised from the host; see the findings. The live attempt changed nothing and dropped no client.
 - Missing names: fixed with a fallback label in `buildHostEntries`, agreed by the owner, verified on the phone.
 - Found and fixed along the way: the service did not come back after an app update until the Devices or Network tab was opened.
 - Tooling change: installed `zig` with Homebrew to cross-compile the read-only probe, because the Mac has no NDK.
