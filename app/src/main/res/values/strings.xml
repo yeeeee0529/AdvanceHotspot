@@ -48,7 +48,7 @@
     <string name="settings_channel_hint">手機同時連著 Wi-Fi 時，系統可能改用與該 Wi-Fi 相同的頻道。</string>
     <string name="settings_max_clients">最大連線裝置數</string>
     <string name="settings_max_clients_unlimited">不限制</string>
-    <string name="settings_max_clients_hint">留空代表不限制，這台裝置最多支援 %1$d 台。</string>
+    <string name="settings_max_clients_hint">留空代表不限制。</string>
     <string name="settings_hidden">隱藏網路名稱</string>
     <string name="settings_auto_shutdown">沒有裝置連線時自動關閉</string>
 

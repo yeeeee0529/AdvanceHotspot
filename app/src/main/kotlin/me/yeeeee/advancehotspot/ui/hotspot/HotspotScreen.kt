@@ -351,9 +351,8 @@ private fun SettingsSections(
                     },
                     label = { Text(stringResource(R.string.settings_max_clients)) },
                     placeholder = { Text(stringResource(R.string.settings_max_clients_unlimited)) },
-                    supportingText = capability?.let {
-                        { Text(stringResource(R.string.settings_max_clients_hint, it.maxSupportedClients)) }
-                    },
+                    // 不顯示系統回報的上限：那個數字來自設定檔，Wi-Fi 韌體實際能接受的台數比它少
+                    supportingText = { Text(stringResource(R.string.settings_max_clients_hint)) },
                     singleLine = true,
                     enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

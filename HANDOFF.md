@@ -111,6 +111,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 | Nickname entry in Chinese | Not tested |
 | M3 Expressive UI: Hotspot (hotspot off), Network, Environment, empty Devices list, dark theme | Verified on device by screenshot |
 | M3 Expressive UI: floating save toolbar, device rows and device sheet, light theme | Not verified on device |
+| Max-clients hint without a number (2026-11-17) | Built and installed; not seen on screen. `uiautomator dump` fails with `could not get idle state` while the app is in front |
 
 ## Known limits
 
@@ -140,7 +141,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 
 Nothing is in progress. Candidates, none of them started or agreed with the owner:
 
-00. More than 10 clients needs a route around the firmware, since the limit cannot be raised (see findings). Candidates, none started or agreed: put a travel router or repeater in NAT/WISP mode behind the hotspot so it counts as one client; feed an external access point through USB or Ethernet tethering; detect the real limit instead of showing the framework's 32. Owner decision 2026-11-17: the limit must be detected at runtime, not hard-coded to 10. Proposed and awaiting the owner's approval: add the NDK, build a small read-only `maxassoc` reader packaged in the APK, run it as root, and cap `maxSupportedClients` with its result, falling back to the framework value when the read fails.
+00. More than 10 clients needs a route around the firmware, since the limit cannot be raised (see findings). Candidates, none started or agreed: put a travel router or repeater in NAT/WISP mode behind the hotspot so it counts as one client; feed an external access point through USB or Ethernet tethering; detect the real limit with a native `maxassoc` reader (needs the NDK). The owner declined that on 2026-11-17 and chose to show no number instead.
 
 0. Finish the on-device check of the new UI: floating save toolbar, device rows and sheet with a real client, and light theme.
 
@@ -158,7 +159,7 @@ Newest entry first. Add one entry per working session.
 
 - Owner report: at most 10 devices can connect, and some devices have no local DNS name. The owner required that the live network not be interrupted.
 - 10-client cap: confirmed as firmware `maxassoc = 10`. Owner decision: research a bypass, then try it live. Result: the firmware rejects every value above 10, so it cannot be raised from the host; see the findings. The live attempt changed nothing and dropped no client.
-- Owner asked for the limit shown in the app to be detected rather than hard-coded. Only the firmware iovar exposes it (see findings), which needs native code; the plan is proposed, not started.
+- Owner decision on the limit shown in the app: no hard-coded 10, and no native detection either (it needs the NDK); the max-clients hint no longer states a number. Validation still rejects values above the framework's 32, so 11 to 32 can be saved but the firmware stops at 10.
 - Missing names: fixed with a fallback label in `buildHostEntries`, agreed by the owner, verified on the phone.
 - Found and fixed along the way: the service did not come back after an app update until the Devices or Network tab was opened.
 - Tooling change: installed `zig` with Homebrew to cross-compile the read-only probe, because the Mac has no NDK.
