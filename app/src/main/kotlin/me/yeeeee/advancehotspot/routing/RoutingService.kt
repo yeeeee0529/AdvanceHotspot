@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.LinkProperties
@@ -84,16 +85,39 @@ object RoutingRuntime {
         requests.tryEmit(Unit)
     }
 
-    /** 依目前的設定啟動或停止服務：路由控制或自訂內網任一項啟用就需要它。 */
-    fun sync(context: Context) {
+    /**
+     * 依目前的設定與熱點狀態啟動或停止服務：熱點開啟中，且路由控制、自訂內網、流量任一項啟用時才需要它。
+     *
+     * 熱點關閉時停止服務，前景通知才會消失。服務停止後不會自行偵測熱點再次開啟，
+     * 因此只有在 app 內開啟熱點，或之後開啟 app 時，服務才會回來。
+     *
+     * @param hotspotOn 呼叫端剛切換熱點時直接傳入結果；省略時讀取系統的網路共用狀態。
+     */
+    fun sync(context: Context, hotspotOn: Boolean = isTethering(context)) {
         val intent = Intent(context, RoutingService::class.java)
-        if (RoutingStore(context).enabled || IntranetStore(context).enabled || TrafficStore(context).enabled) {
+        val featureEnabled =
+            RoutingStore(context).enabled || IntranetStore(context).enabled || TrafficStore(context).enabled
+        if (hotspotOn && featureEnabled) {
             context.startForegroundService(intent)
             requestApply()
         } else {
             context.stopService(intent)
         }
     }
+
+    /** 從系統的 sticky 廣播讀取目前是否有作用中的網路共用介面。 */
+    private fun isTethering(context: Context): Boolean {
+        val sticky = context.registerReceiver(
+            null,
+            IntentFilter(ACTION_TETHER_STATE_CHANGED),
+            Context.RECEIVER_NOT_EXPORTED,
+        ) ?: return false
+        return !sticky.getStringArrayListExtra(EXTRA_ACTIVE_TETHER).isNullOrEmpty()
+    }
+
+    // ConnectivityManager 中的隱藏常數
+    private const val ACTION_TETHER_STATE_CHANGED = "android.net.conn.TETHER_STATE_CHANGED"
+    private const val EXTRA_ACTIVE_TETHER = "tetherArray"
 }
 
 /**
@@ -467,7 +491,7 @@ class RoutingService : Service() {
     }
 }
 
-/** 開機後熱點可能由系統介面直接開啟，路由控制啟用時要先把服務帶起來。 */
+/** 開機時熱點若已開啟（例如由系統還原），路由控制啟用時要先把服務帶起來。 */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) RoutingRuntime.sync(context)

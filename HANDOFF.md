@@ -2,7 +2,7 @@
 
 This file is the single place where agents hand work over to each other. Read it before doing anything else, and update it before you stop. The rules for maintaining it are in [AGENTS.md](AGENTS.md).
 
-Last updated: 2026-11-17
+Last updated: 2026-11-18
 
 ## Current state
 
@@ -56,7 +56,7 @@ Lint results are easiest to read from `app/build/reports/lint-results-debug.sari
 | `traffic` | Counting and rate limit rules, counter parsing, stored limits and totals |
 | `ui` | Compose screens and view models: `hotspot`, `devices`, `network`, `environment`; shared M3 Expressive building blocks in `ui/components/Expressive.kt` |
 
-`RoutingService` is one foreground service shared by routing, intranet and traffic. It runs when any of the three is enabled (`RoutingRuntime.sync`). On every trigger it applies intranet, then routing, then traffic. Traffic must be applied last so that its chain sits before the routing chain in `FORWARD`.
+`RoutingService` is one foreground service shared by routing, intranet and traffic. It runs when the hotspot is on and any of the three is enabled (`RoutingRuntime.sync`). `sync` reads the hotspot state from the sticky `android.net.conn.TETHER_STATE_CHANGED` broadcast (extra `tetherArray`), unless the caller passes `hotspotOn`; `HotspotViewModel` passes it after its own start or stop, because the sticky broadcast may lag the AP state. A stopped service does not watch the hotspot: turning the hotspot on from Quick Settings applies no rules until the app is opened (owner decision 2026-11-18). On every trigger it applies intranet, then routing, then traffic. Traffic must be applied last so that its chain sits before the routing chain in `FORWARD`.
 
 The UI has four tabs in `MainScreen` with a bottom `ShortNavigationBar`. Each tab owns its own `ScreenScaffold` (large flexible top app bar). The Devices and Network tabs share one `DevicesViewModel` (both call `viewModel()` with the activity as owner) and both run `DevicesPolling`; only one is visible at a time, so only one poll loop runs. Grouped settings use `SegmentedGroup`, which hands each item its position-based `ListItemShapes`.
 
@@ -88,6 +88,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - **How the iovar was read.** The phone has no `wl`, `iw` or `hostapd_cli`. A static arm64 binary that sends `WLC_GET_VAR` (262) through `SIOCDEVPRIVATE` with the `dhd_ioctl` struct (`cmd, buf, len, set, used, needed, driver=0`) works as root. This Mac has no NDK; `zig cc -target aarch64-linux-musl -static` (zig installed with Homebrew on 2026-11-17) builds it. The set counterpart is `WLC_SET_VAR` (263) with `set=1` and the buffer `name\0` followed by a little-endian int32. Text dumps use `WLC_GET_VAR` with the buffer `dump\0<section>\0`.
 - **Clients without a nickname or DHCP hostname now get `device-<last octet>.lan`.** Before 2026-11-17 `buildHostEntries` skipped them; 7 of 11 leases had hostname `*` and no nicknames were stored, so most clients had no name. Many phones send no hostname.
 - **`RoutingService` used to start only when the Devices or Network tab was opened.** After `adb install -r` or a process kill it stayed down until then, so the hosts file and rules were not refreshed. `MainActivity.onCreate` now calls `RoutingRuntime.sync`. It is not in `App.onCreate` on purpose: a process started in the background may not start a foreground service.
+- **Android requires a notification for a foreground service, so the only way to clear the routing notification is to stop the service.** Before 2026-11-18 it ran whenever routing, intranet or traffic was enabled, even with the hotspot off. Keeping it in the background without a notification would need the app on the device-idle allowlist (a system setting change), and restarting it when the hotspot comes back would need a root-side watcher that calls `am start-foreground-service`. The owner chose neither; see Architecture.
 - **toybox `nc -u -w` never exits when the peer stays silent or after the reply.** Use `timeout 5 nc -u -q 2 <ip> 53 < query.bin`. A raw DNS query through it is a workable resolver test, since the phone has no `nslookup`.
 - **Without root, `run-as me.yeeeee.advancehotspot` can still read `files/intranet/` (leases, hosts) and `shared_prefs`,** because the build is debuggable and the root-written files are world-readable. `dumpsys wifi` and `ip neigh` also work as the shell user.
 - **A blocked-then-unblocked client does not always redo DHCP.** It often keeps its lease. To force a fresh DHCP exchange, ask the owner to toggle Wi-Fi on the client.
@@ -111,6 +112,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 | Nickname entry in Chinese | Not tested |
 | M3 Expressive UI: Hotspot (hotspot off), Network, Environment, empty Devices list, dark theme | Verified on device by screenshot |
 | M3 Expressive UI: floating save toolbar, device rows and device sheet, light theme | Not verified on device |
+| Routing service stops with the hotspot (2026-11-18) | Verified on device: app open with hotspot off starts no service; in-app start brings the service and notification up; force-stop and reopen with the hotspot on restarts it through the sticky broadcast; in-app stop removes service and notification and leaves no dnsmasq or watcher process. Turning off from Quick Settings not tested |
 | Max-clients hint without a number (2026-11-17) | Built and installed; not seen on screen. `uiautomator dump` fails with `could not get idle state` while the app is in front |
 
 ## Known limits
@@ -120,6 +122,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - A device bound to a specific egress cannot resolve `.lan` names, because its DNS is redirected to that network's DNS server.
 - Mobile data through 464XLAT is not handled: rules match the base interface, not the stacked `v4-` interface.
 - The intranet subnet is always a /24.
+- The routing service does not start when the hotspot is turned on from Quick Settings or restored at boot while the app is closed; rules apply once the app is opened. Turning the hotspot off from Quick Settings leaves the service and its notification until the app is opened.
 - Turning routing or traffic off does not re-attach BPF offload; it returns the next time the hotspot starts.
 
 ## State left on the test phone
@@ -129,6 +132,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - `adb shell` has root again; the owner re-granted it on 2026-11-17 after it had gone missing earlier that day.
 - The app was updated in place twice on 2026-11-17 (fallback names, service start). Clients stayed connected and both dnsmasq processes kept their pids.
 - Probe files pushed to `/data/local/tmp` on 2026-11-17 were removed. Firmware `maxassoc` is at its original value of 10.
+- 2026-11-18: the hotspot was found off. For the notification test the agent turned it on and off again in the app with the owner's consent; it is left off. `adb shell` has no root again (`su: inaccessible or not found`); the app's own root grant still works.
 - Dark mode is on (`cmd uimode night yes`). Auto-rotate is on; its earlier value is unknown.
 
 ## Working with the phone
@@ -154,6 +158,13 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-18 (routing notification after hotspot off)
+
+- Owner report: the routing notification stays after the hotspot is turned off. Cause: `RoutingService` ran whenever any feature was enabled, independent of the hotspot.
+- Owner decision: handle it only for the app's own hotspot switch; no device-idle allowlist and no root-side watcher.
+- Change: `RoutingRuntime.sync` also requires the hotspot to be on; `HotspotViewModel` calls it after start, stop and a restarting save. READMEs (zh-TW, en) describe the lifecycle.
+- Verified on the phone (see Verification status). Checks: `assembleDebug` passes, 29 unit tests pass, lint 0 errors and the same 2 accepted warnings.
 
 ### 2026-11-17 (10-client cap and missing local DNS names)
 

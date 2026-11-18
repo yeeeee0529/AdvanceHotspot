@@ -14,6 +14,7 @@ import me.yeeeee.advancehotspot.hotspot.HotspotConfig
 import me.yeeeee.advancehotspot.hotspot.HotspotController
 import me.yeeeee.advancehotspot.hotspot.HotspotStatus
 import me.yeeeee.advancehotspot.hotspot.validate
+import me.yeeeee.advancehotspot.routing.RoutingRuntime
 
 data class HotspotUiState(
     val status: HotspotStatus? = null,
@@ -56,6 +57,9 @@ class HotspotViewModel(application: Application) : AndroidViewModel(application)
             controller.stop()
             showStatus(controller.awaitApState(ApState.DISABLED), keepDraft = true)
         }
+        // 熱點關閉時停止路由服務並清除其通知，開啟時再帶起來；
+        // 剛切換完系統的網路共用狀態可能還沒更新，因此直接傳入結果
+        RoutingRuntime.sync(getApplication(), hotspotOn = _state.value.status?.isEnabled == true)
     }
 
     /** 寫入設定；熱點開啟中時會重新啟動讓新設定生效。 */
@@ -74,6 +78,7 @@ class HotspotViewModel(application: Application) : AndroidViewModel(application)
                 controller.awaitApState(ApState.DISABLED)
                 controller.start()
                 showStatus(controller.awaitApState(ApState.ENABLED), keepDraft = false)
+                RoutingRuntime.sync(getApplication(), hotspotOn = _state.value.status?.isEnabled == true)
             } else {
                 showStatus(controller.status(), keepDraft = false)
             }
