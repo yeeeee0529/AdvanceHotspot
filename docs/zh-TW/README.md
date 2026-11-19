@@ -17,7 +17,7 @@ AdvanceHotspot 是一個 Android app，在已 root 的裝置上擴充系統 Wi-F
 
 ## 介面
 
-介面遵循 Material 3 Expressive 設計規範（Compose Material 3 `1.5.0-rc01`、動態配色、expressive 動態效果）。底部導覽列有四個分頁：
+介面遵循 Material 3 Expressive 設計規範（Compose Material 3 `1.5.0-rc01`、動態配色、expressive 動態效果）。底部是仿 FlClash 的浮動膠囊導覽列，共四個分頁；可以直接點選，也可以按住後左右拖曳選取標示來切換：
 
 | 分頁 | 內容 |
 | --- | --- |

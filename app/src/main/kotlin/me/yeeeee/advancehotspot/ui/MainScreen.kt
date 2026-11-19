@@ -1,29 +1,23 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
-
 package me.yeeeee.advancehotspot.ui
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ShortNavigationBar
-import androidx.compose.material3.ShortNavigationBarItem
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import me.yeeeee.advancehotspot.R
+import me.yeeeee.advancehotspot.ui.components.DockDestination
+import me.yeeeee.advancehotspot.ui.components.FloatingNavigationDock
+import me.yeeeee.advancehotspot.ui.components.LocalDockInset
+import me.yeeeee.advancehotspot.ui.components.floatingNavigationDockInset
 import me.yeeeee.advancehotspot.ui.devices.DevicesScreen
 import me.yeeeee.advancehotspot.ui.environment.EnvironmentScreen
 import me.yeeeee.advancehotspot.ui.hotspot.HotspotScreen
@@ -39,24 +33,11 @@ private enum class MainTab(@param:StringRes val label: Int, @param:DrawableRes v
 @Composable
 fun MainScreen() {
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.HOTSPOT) }
+    val destinations = MainTab.entries.map { DockDestination(stringResource(it.label), it.icon) }
 
-    Scaffold(
-        bottomBar = {
-            ShortNavigationBar {
-                MainTab.entries.forEach { tab ->
-                    ShortNavigationBarItem(
-                        selected = tab == selectedTab,
-                        onClick = { selectedTab = tab },
-                        icon = { Icon(painterResource(tab.icon), contentDescription = null) },
-                        label = { Text(stringResource(tab.label)) },
-                    )
-                }
-            }
-        },
-    ) { innerPadding ->
-        // 只扣掉底部導覽列；頂部的狀態列留給各分頁自己的頂部列處理
-        val bottom = PaddingValues(bottom = innerPadding.calculateBottomPadding())
-        Box(Modifier.fillMaxSize().padding(bottom).consumeWindowInsets(bottom)) {
+    // 導覽列浮在內容上方；各分頁的 ScreenScaffold 依 LocalDockInset 在底部讓出空間
+    Box(Modifier.fillMaxSize()) {
+        CompositionLocalProvider(LocalDockInset provides floatingNavigationDockInset()) {
             when (selectedTab) {
                 MainTab.HOTSPOT -> HotspotScreen()
                 MainTab.DEVICES -> DevicesScreen()
@@ -64,5 +45,11 @@ fun MainScreen() {
                 MainTab.ENVIRONMENT -> EnvironmentScreen()
             }
         }
+        FloatingNavigationDock(
+            destinations = destinations,
+            selectedIndex = selectedTab.ordinal,
+            onSelected = { selectedTab = MainTab.entries[it] },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }

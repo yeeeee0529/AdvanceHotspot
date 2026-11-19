@@ -17,7 +17,7 @@ AdvanceHotspot is an Android app that extends the system Wi-Fi hotspot on a root
 
 ## Interface
 
-The UI follows Material 3 Expressive (Compose Material 3 `1.5.0-rc01`, dynamic color, expressive motion). A bottom navigation bar has four tabs:
+The UI follows Material 3 Expressive (Compose Material 3 `1.5.0-rc01`, dynamic color, expressive motion). A floating pill navigation bar at the bottom, modeled on FlClash, has four tabs; tap a tab, or press and drag the highlight across the bar:
 
 | Tab | Contents |
 | --- | --- |

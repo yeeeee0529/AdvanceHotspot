@@ -16,7 +16,7 @@ All six planned phases are implemented and committed on the local `main` branch.
 | 4 | Per-device routing, egress selection, kill switch, IPv6 leak protection | Done |
 | 5 | Custom intranet: subnet, static leases, local DNS, client isolation | Done |
 | 6 | Per-device traffic statistics and rate limits | Done |
-| UI | Material 3 Expressive rewrite, four tabs | Done; on-device check partial (see Verification status) |
+| UI | Material 3 Expressive rewrite, four tabs, FlClash-style floating bottom bar | Done; on-device check partial (see Verification status) |
 
 Last check results: `assembleDebug` passes, 29 unit tests pass, `lintDebug` reports 0 errors and 2 accepted warnings (`AndroidGradlePluginVersion`, `DataExtractionRules`).
 
@@ -58,7 +58,7 @@ Lint results are easiest to read from `app/build/reports/lint-results-debug.sari
 
 `RoutingService` is one foreground service shared by routing, intranet and traffic. It runs when the hotspot is on and any of the three is enabled (`RoutingRuntime.sync`). `sync` reads the hotspot state from the sticky `android.net.conn.TETHER_STATE_CHANGED` broadcast (extra `tetherArray`), unless the caller passes `hotspotOn`; `HotspotViewModel` passes it after its own start or stop, because the sticky broadcast may lag the AP state. A stopped service does not watch the hotspot: turning the hotspot on from Quick Settings applies no rules until the app is opened (owner decision 2026-11-18). On every trigger it applies intranet, then routing, then traffic. Traffic must be applied last so that its chain sits before the routing chain in `FORWARD`.
 
-The UI has four tabs in `MainScreen` with a bottom `ShortNavigationBar`. Each tab owns its own `ScreenScaffold` (large flexible top app bar). The Devices and Network tabs share one `DevicesViewModel` (both call `viewModel()` with the activity as owner) and both run `DevicesPolling`; only one is visible at a time, so only one poll loop runs. Grouped settings use `SegmentedGroup`, which hands each item its position-based `ListItemShapes`.
+The UI has four tabs in `MainScreen` with a floating pill navigation bar, `FloatingNavigationDock` in `ui/components/FloatingNavigationDock.kt`, modeled on FlClash's non-glass `NavigationDock` (sizes and springs taken from its `prism_ui` source). It floats over the content; `MainScreen` provides `LocalDockInset`, and `ScreenScaffold` drops the bottom system inset, adds the dock inset to the content's bottom padding and lifts its floating action button above the dock. Each tab owns its own `ScreenScaffold` (large flexible top app bar). The Devices and Network tabs share one `DevicesViewModel` (both call `viewModel()` with the activity as owner) and both run `DevicesPolling`; only one is visible at a time, so only one poll loop runs. Grouped settings use `SegmentedGroup`, which hands each item its position-based `ListItemShapes`.
 
 All root-side state is produced by pure script generators (`RoutingPlan.toScript`, `IntranetConfig.toScript`, `buildTrafficScript`). Each one validates every external value against a strict pattern before it enters a shell script. Keep that property when you add inputs.
 
@@ -116,6 +116,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 | Persistent notification with egress and stop button (2026-11-19) | Verified on device: after turning the hotspot on in the app, the notification reads 熱點已開啟 / 目前出口 tun0 (VPN active) and carries one action. The stop button itself was not pressed (a client was connected) |
 | Device sorting by usage and Hotspot auto refresh (2026-11-19) | Hotspot tab on device: the refresh button is gone and the status updated to on without a manual refresh. Device sorting not checked |
 | Temporary disconnect button (2026-11-19) | Built only; not run on the phone |
+| FlClash-style floating navigation bar (2026-11-19) | Verified on device in dark theme: tap switches tab, dragging the highlight from the last tab to the first switches tab, the end of the Network tab scrolls clear of the bar. Light theme, the Hotspot save toolbar above the bar, and large font scale not checked |
 | Max-clients hint without a number (2026-11-17) | Built and installed; not seen on screen. `uiautomator dump` fails with `could not get idle state` while the app is in front |
 
 ## Known limits
@@ -162,6 +163,12 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-19 (FlClash-style bottom bar)
+
+- Owner request: make the bottom bar look like FlClash's. FlClash (installed on the phone) defaults to a floating pill dock; its widget is `NavigationDock` in the `chen08209/prism_ui` submodule, not in the main FlClash repo.
+- Change: replaced `ShortNavigationBar` with `FloatingNavigationDock` (new file under `ui/components`). Ported the non-glass look only: 62 dp pill, 4 dp padding, 21 dp edge margin, items up to 86 dp wide, 28 dp icons, 10 sp labels, a sliding highlight with the same spring values, a press bounce, two soft shadows, surface colors by FlClash's floating level. Not ported: liquid glass, jelly stretch, hover effects. Height is fixed at 62 dp, so very large font scales may clip labels.
+- Checks: build, lint (same 2 accepted warnings) and 29 unit tests pass. Verified on the phone; see Verification status.
 
 ### 2026-11-19 (app name)
 

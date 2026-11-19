@@ -19,8 +19,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -37,6 +39,7 @@ import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -93,6 +96,8 @@ fun ScreenScaffold(
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val background = MaterialTheme.colorScheme.surfaceContainer
+    // 底部浮動導覽列蓋在內容上：底部系統列的內距改由導覽列高度取代
+    val dockInset = LocalDockInset.current
     Scaffold(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = background,
@@ -108,15 +113,20 @@ fun ScreenScaffold(
                 scrollBehavior = scrollBehavior,
             )
         },
-        floatingActionButton = floatingActionButton,
+        floatingActionButton = { Box(Modifier.padding(bottom = dockInset)) { floatingActionButton() } },
         floatingActionButtonPosition = FabPosition.Center,
+        contentWindowInsets = if (dockInset > 0.dp) {
+            ScaffoldDefaults.contentWindowInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+        } else {
+            ScaffoldDefaults.contentWindowInsets
+        },
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
-                .padding(start = ScreenHorizontalPadding, end = ScreenHorizontalPadding, bottom = bottomSpace),
+                .padding(start = ScreenHorizontalPadding, end = ScreenHorizontalPadding, bottom = bottomSpace + dockInset),
             content = content,
         )
     }
