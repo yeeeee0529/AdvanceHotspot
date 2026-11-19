@@ -6,7 +6,7 @@ Last updated: 2026-11-19
 
 ## Current state
 
-All six planned phases are implemented and committed on the local `main` branch. A private GitHub remote `origin` (`yeeeee0529/AdvanceHotspot`) was created on 2026-11-19 at the owner's request, but nothing has been pushed yet; do not push unless asked.
+All six planned phases are implemented and committed on the local `main` branch. A private GitHub remote `origin` (`yeeeee0529/AdvanceHotspot`) was created on 2026-11-19 at the owner's request and `main` was pushed the same day. Ask before pushing further changes unless the owner says otherwise.
 
 | Phase | Scope | State |
 | --- | --- | --- |
@@ -163,7 +163,7 @@ Newest entry first. Add one entry per working session.
 
 ### 2026-11-19 (private remote)
 
-- Owner request: create a private remote with `gh`. Created `yeeeee0529/AdvanceHotspot` (private) and added it as `origin`. Nothing pushed; the owner has not asked for a push yet.
+- Owner request: create a private remote with `gh`. Created `yeeeee0529/AdvanceHotspot` (private) and added it as `origin`. Then, at the owner's request, pushed `main` and set it to track `origin/main`.
 
 ### 2026-11-19 (temporary disconnect button)
 
