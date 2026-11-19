@@ -20,7 +20,7 @@ All six planned phases are implemented and committed on the local `main` branch.
 
 Last check results: `assembleDebug` passes, 29 unit tests pass, `lintDebug` reports 0 errors and 2 accepted warnings (`AndroidGradlePluginVersion`, `DataExtractionRules`).
 
-On 2026-11-19 a Shizuku mode was added at the owner's request (not pushed). The owner chose a manual Root/Shizuku switch on the Environment tab (default Root) and to keep the foreground notification in Shizuku mode. Shizuku mode covers hotspot settings, on/off and device management only; routing, intranet and traffic need root and are disabled. See the 2026-11-19 (Shizuku mode) log entry.
+On 2026-11-19 a Shizuku mode was added at the owner's request and pushed to `origin` at the owner's request. The owner chose a manual Root/Shizuku switch on the Environment tab (default Root) and to keep the foreground notification in Shizuku mode. Shizuku mode covers hotspot settings, on/off and device management only; routing, intranet and traffic need root and are disabled. See the 2026-11-19 (Shizuku mode) log entry.
 
 The UI was rewritten to Material 3 Expressive on 2026-11-16. Only the `ui` package, `MainActivity`-adjacent theme, resources and docs changed; no view model, script generator or root-side code changed.
 
@@ -218,6 +218,7 @@ Newest entry first. Add one entry per working session.
 - Change: Shizuku `api` and `provider` 13.1.5, `ShizukuProvider` in the manifest, AIDL enabled. New `privilege` package and `HelperUserService`. `SoftApBridge.watch` became `startWatching`, returning an unregister function; `HelperMain` keeps the stdin-EOF wait and exposes `execute`. `HotspotController` routes by mode and adds `watchViaShizuku`. Root-only stores read as disabled in Shizuku mode; the Network tab disables their switches with a hint. `EnvironmentProbe` uses `PrivilegedShell` and reports the mode; Hotspot tab refreshes on a mode switch. Three READMEs document the mode.
 - Checks: `assembleDebug`, `lintDebug` (same 2 accepted warnings), 29 unit tests pass. On the phone, see Verification status (Shizuku mode): Shizuku mode, Root mode after the refactor, and the Root-to-Shizuku teardown were checked after the owner granted KernelSU to the app and to Shell.
 - Unfinished: saving settings and blocking through Shizuku are untested.
+- Pushed `main` to `origin` at the owner's request.
 
 ### 2026-11-19 (public repository, package rename, CI and releases)
 
