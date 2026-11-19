@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -128,6 +131,34 @@ class DevicesViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * 暫時中斷連線：先封鎖讓系統踢除裝置，稍後立刻還原封鎖名單，裝置之後可自行重連。
+     * 即使中途出錯也一定嘗試還原，避免裝置被留在封鎖名單中。
+     */
+    fun disconnect(mac: String) {
+        val original = latest?.blockedMacs ?: return
+        _state.update { it.copy(busy = true, failure = null) }
+        viewModelScope.launch {
+            try {
+                refreshJob?.join()
+                controller.setBlocked((original + mac).distinct())
+                delay(KICK_HOLD_MS)
+            } catch (exception: Exception) {
+                _state.update { it.copy(failure = exception.message ?: exception.toString()) }
+            } finally {
+                try {
+                    withContext(NonCancellable) {
+                        controller.setBlocked(original.distinct())
+                        show(intranetStore.mergeLeases(controller.clients()))
+                    }
+                } catch (exception: Exception) {
+                    _state.update { it.copy(failure = exception.message ?: exception.toString()) }
+                }
+                _state.update { it.copy(busy = false) }
+            }
+        }
+    }
+
     fun setRoutingEnabled(enabled: Boolean) {
         routingStore.enabled = enabled
         _state.update { it.copy(routingEnabled = enabled) }
@@ -241,5 +272,10 @@ class DevicesViewModel(application: Application) : AndroidViewModel(application)
                 resolvedEgress = resolver.resolve(snapshot.downstream?.iface),
             )
         }
+    }
+
+    private companion object {
+        /** 封鎖維持多久，足夠讓系統完成踢除。 */
+        const val KICK_HOLD_MS = 2000L
     }
 }

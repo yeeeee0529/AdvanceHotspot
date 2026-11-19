@@ -72,6 +72,7 @@
 
     <string name="action_cancel">取消</string>
     <string name="action_rename">重新命名</string>
+    <string name="action_disconnect">暫時中斷連線</string>
     <string name="action_block">封鎖</string>
     <string name="action_unblock">解除封鎖</string>
     <string name="devices_connected_title">已連線（%1$d）</string>

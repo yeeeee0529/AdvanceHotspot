@@ -113,6 +113,7 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
                 onStaticIp = { staticIpMac = mac },
                 onLimit = { limitMac = mac },
                 onToggleBlock = { blocked -> viewModel.setBlocked(mac, blocked) },
+                onDisconnect = { viewModel.disconnect(mac) },
                 onPolicy = { viewModel.setPolicy(mac, it) },
             )
         }
@@ -276,6 +277,7 @@ private fun DeviceSheet(
     onStaticIp: () -> Unit,
     onLimit: () -> Unit,
     onToggleBlock: (Boolean) -> Unit,
+    onDisconnect: () -> Unit,
     onPolicy: (me.yeeeee.advancehotspot.routing.DevicePolicy) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -392,6 +394,13 @@ private fun DeviceSheet(
                 }
                 if (state.trafficEnabled && group == DeviceGroup.CONNECTED) {
                     ActionButton(R.drawable.ic_speed, stringResource(R.string.action_limit), onLimit)
+                }
+                if (group == DeviceGroup.CONNECTED) {
+                    FilledTonalButton(onClick = onDisconnect, enabled = !state.busy, shapes = ButtonDefaults.shapes()) {
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.action_disconnect))
+                    }
                 }
                 val blocked = group == DeviceGroup.BLOCKED
                 Button(
