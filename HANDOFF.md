@@ -212,6 +212,11 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 
 Newest entry first. Add one entry per working session.
 
+### 2026-11-19 (v0.2.0 release)
+
+- Owner request: publish a release; owner chose `v0.2.0`. Tagged `main` (Shizuku mode) and pushed the tag; the release workflow passed and the release has `AdvanceHotspot-v0.2.0.apk`. The APK was not installed on the phone.
+- CI on `eae9ea7` failed once with a configuration cache serialization error in `:app:compileDebugAidl` (`importDirs`); the next CI run on the same code and the release run passed. Treated as flaky; re-run before changing the build if it returns.
+
 ### 2026-11-19 (Shizuku mode)
 
 - Owner request: add a Shizuku mode. Owner decisions: manual Root/Shizuku switch on the Environment tab, default Root; keep the foreground notification in Shizuku mode; allowed restarting Shizuku through ADB as shell, granting the app's Shizuku permission, and turning the hotspot on and off once.
