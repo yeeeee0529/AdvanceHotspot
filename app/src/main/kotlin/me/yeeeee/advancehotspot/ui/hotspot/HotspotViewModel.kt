@@ -3,6 +3,7 @@ package me.yeeeee.advancehotspot.ui.hotspot
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,9 +33,27 @@ class HotspotViewModel(application: Application) : AndroidViewModel(application)
     private val controller = HotspotController(application.applicationInfo.sourceDir)
     private val _state = MutableStateFlow(HotspotUiState())
     val state: StateFlow<HotspotUiState> = _state.asStateFlow()
+    private var pollJob: Job? = null
 
     init {
         refresh()
+    }
+
+    /**
+     * 由畫面定期呼叫的背景更新：不顯示忙碌狀態，也不覆蓋使用者尚未儲存的編輯；
+     * 操作進行中時略過，失敗時保留目前畫面。
+     */
+    fun poll() {
+        if (_state.value.busy || pollJob?.isActive == true) return
+        pollJob = viewModelScope.launch {
+            val status = try {
+                controller.status()
+            } catch (exception: Exception) {
+                return@launch
+            }
+            // 讀取期間若開始了開關或儲存，結果可能已過時
+            if (!_state.value.busy) showStatus(status, keepDraft = true)
+        }
     }
 
     fun refresh() = runBusy {

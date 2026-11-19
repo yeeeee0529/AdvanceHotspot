@@ -82,15 +82,20 @@ fun DevicesScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
         }
         state.failure?.let { ErrorBanner(stringResource(R.string.hotspot_operation_failed, it)) }
 
+        // 依累計總用量（上傳加下載）由多到少排序；用量相同時維持原本的順序
+        fun List<DeviceItem>.byUsage() = sortedByDescending { device ->
+            state.traffic[device.mac]?.let { it.upBytes + it.downBytes } ?: 0L
+        }
+
         SectionHeader(stringResource(R.string.devices_connected_title, state.connected.size))
         if (state.connected.isEmpty()) {
             EmptyDevices()
         } else {
-            DeviceGroupList(state, state.connected, DeviceGroup.CONNECTED) { detailMac = it }
+            DeviceGroupList(state, state.connected.byUsage(), DeviceGroup.CONNECTED) { detailMac = it }
         }
         if (state.routingEnabled && state.offline.isNotEmpty()) {
             SectionHeader(stringResource(R.string.devices_offline_title, state.offline.size))
-            DeviceGroupList(state, state.offline, DeviceGroup.OFFLINE) { detailMac = it }
+            DeviceGroupList(state, state.offline.byUsage(), DeviceGroup.OFFLINE) { detailMac = it }
         }
         if (state.blocked.isNotEmpty()) {
             SectionHeader(stringResource(R.string.devices_blocked_title, state.blocked.size))

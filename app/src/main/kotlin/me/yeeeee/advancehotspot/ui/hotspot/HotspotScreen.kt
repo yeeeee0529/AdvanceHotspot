@@ -37,8 +37,10 @@ import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,8 +51,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import me.yeeeee.advancehotspot.R
 import me.yeeeee.advancehotspot.hotspot.ApState
 import me.yeeeee.advancehotspot.hotspot.Band
@@ -94,15 +98,11 @@ fun HotspotScreen(modifier: Modifier = Modifier, viewModel: HotspotViewModel = v
     val status = state.status
     val draft = state.draft
     val showToolbar = state.isDirty && draft != null
+    HotspotPolling(viewModel)
 
     ScreenScaffold(
         title = stringResource(R.string.tab_hotspot),
         modifier = modifier,
-        actions = {
-            IconButton(onClick = viewModel::refresh, enabled = !state.busy) {
-                Icon(painterResource(R.drawable.ic_refresh), contentDescription = stringResource(R.string.action_refresh))
-            }
-        },
         floatingActionButton = {
             AnimatedVisibility(
                 visible = showToolbar,
@@ -143,6 +143,24 @@ fun HotspotScreen(modifier: Modifier = Modifier, viewModel: HotspotViewModel = v
         }
     }
 }
+
+/** 畫面在前景時定期更新熱點狀態，例如從快速設定開關熱點、或有裝置連上時能自動反映。 */
+@Composable
+private fun HotspotPolling(viewModel: HotspotViewModel) {
+    var resumed by remember { mutableStateOf(false) }
+    LifecycleResumeEffect(Unit) {
+        resumed = true
+        onPauseOrDispose { resumed = false }
+    }
+    LaunchedEffect(resumed) {
+        while (resumed) {
+            delay(POLL_INTERVAL_MS)
+            viewModel.poll()
+        }
+    }
+}
+
+private const val POLL_INTERVAL_MS = 3000L
 
 /** 頁面頂端的大型狀態區：變形徽章、狀態文字與主要的開關按鈕。 */
 @Composable

@@ -22,7 +22,7 @@ The UI follows Material 3 Expressive (Compose Material 3 `1.5.0-rc01`, dynamic c
 | Tab | Contents |
 | --- | --- |
 | Hotspot | Status, on/off button, and hotspot settings. Unsaved changes bring up a floating save toolbar. |
-| Devices | Connected, offline and blocked devices. Tap a device to open a sheet with its traffic, routing, details and actions (rename, static IP, rate limit, disconnect temporarily, block). "Disconnect temporarily" kicks a connected device by blocking it for two seconds and then restoring the blocklist, so it can reconnect on its own. |
+| Devices | Connected, offline and blocked devices. Connected and offline devices are sorted by total traffic (upload plus download), highest first. Tap a device to open a sheet with its traffic, routing, details and actions (rename, static IP, rate limit, disconnect temporarily, block). "Disconnect temporarily" kicks a connected device by blocking it for two seconds and then restoring the blocklist, so it can reconnect on its own. |
 | Network | Switches and global settings for per-device routing, custom intranet and traffic statistics. |
 | Environment | Root status, system information, network tools and active interfaces. |
 

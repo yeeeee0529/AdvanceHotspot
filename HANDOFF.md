@@ -114,6 +114,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 | M3 Expressive UI: floating save toolbar, device rows and device sheet, light theme | Not verified on device |
 | Routing service stops with the hotspot (2026-11-18) | Verified on device: app open with hotspot off starts no service; in-app start brings the service and notification up; force-stop and reopen with the hotspot on restarts it through the sticky broadcast; in-app stop removes service and notification and leaves no dnsmasq or watcher process. Turning off from Quick Settings not tested |
 | Persistent notification with egress and stop button (2026-11-19) | Built only; not run on the phone |
+| Device sorting by usage and Hotspot auto refresh (2026-11-19) | Built only; not run on the phone |
 | Temporary disconnect button (2026-11-19) | Built only; not run on the phone |
 | Max-clients hint without a number (2026-11-17) | Built and installed; not seen on screen. `uiautomator dump` fails with `could not get idle state` while the app is in front |
 
@@ -160,6 +161,12 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-19 (device sort and automatic hotspot refresh)
+
+- Owner request: sort devices by total network usage; make the Hotspot tab refresh automatic.
+- Change: connected and offline device lists sort by `upBytes + downBytes` descending in `DevicesScreen` (the traffic flow is separate from the device snapshot, so sorting is done at render time; ties keep the old order; usage only exists when traffic statistics are on). The Hotspot tab's refresh button is gone; `HotspotPolling` calls `HotspotViewModel.poll()` every 3 s while the screen is resumed. `poll` is silent: it skips while busy, ignores failures, and keeps an unsaved draft. The Environment tab keeps its refresh button.
+- Checks: build, lint, unit tests pass. **Not verified on the phone.** The list may reorder while the owner is about to tap a row; not judged yet.
 
 ### 2026-11-19 (private remote)
 
