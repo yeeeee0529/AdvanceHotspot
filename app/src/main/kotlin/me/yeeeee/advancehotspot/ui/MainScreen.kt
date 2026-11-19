@@ -12,6 +12,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.res.stringResource
 import me.yeeeee.advancehotspot.R
 import me.yeeeee.advancehotspot.ui.components.DockDestination
@@ -35,20 +38,31 @@ fun MainScreen() {
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.HOTSPOT) }
     val destinations = MainTab.entries.map { DockDestination(stringResource(it.label), it.icon) }
 
+    // 錄下畫面內容，讓液態玻璃導覽列折射底下的內容
+    val backdrop = rememberGraphicsLayer()
+
     // 導覽列浮在內容上方；各分頁的 ScreenScaffold 依 LocalDockInset 在底部讓出空間
     Box(Modifier.fillMaxSize()) {
-        CompositionLocalProvider(LocalDockInset provides floatingNavigationDockInset()) {
-            when (selectedTab) {
-                MainTab.HOTSPOT -> HotspotScreen()
-                MainTab.DEVICES -> DevicesScreen()
-                MainTab.NETWORK -> NetworkScreen()
-                MainTab.ENVIRONMENT -> EnvironmentScreen()
+        Box(
+            Modifier.fillMaxSize().drawWithContent {
+                backdrop.record { this@drawWithContent.drawContent() }
+                drawLayer(backdrop)
+            },
+        ) {
+            CompositionLocalProvider(LocalDockInset provides floatingNavigationDockInset()) {
+                when (selectedTab) {
+                    MainTab.HOTSPOT -> HotspotScreen()
+                    MainTab.DEVICES -> DevicesScreen()
+                    MainTab.NETWORK -> NetworkScreen()
+                    MainTab.ENVIRONMENT -> EnvironmentScreen()
+                }
             }
         }
         FloatingNavigationDock(
             destinations = destinations,
             selectedIndex = selectedTab.ordinal,
             onSelected = { selectedTab = MainTab.entries[it] },
+            backdrop = backdrop,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }

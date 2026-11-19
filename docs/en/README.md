@@ -17,14 +17,16 @@ AdvanceHotspot is an Android app that extends the system Wi-Fi hotspot on a root
 
 ## Interface
 
-The UI follows Material 3 Expressive (Compose Material 3 `1.5.0-rc01`, dynamic color, expressive motion). A floating pill navigation bar at the bottom, modeled on FlClash, has four tabs; tap a tab, or press and drag the highlight across the bar:
+The UI follows Material 3 Expressive (Compose Material 3 `1.5.0-rc01`, dynamic color, expressive motion). A floating liquid-glass navigation bar at the bottom, modeled on FlClash, has four tabs. The pill refracts and blurs the content behind it. Pressing lifts the highlight into a magnifying glass lens that can be dragged across the tabs; it stretches like jelly when moved quickly, and each tab it crosses gives a light haptic tick.
 
 | Tab | Contents |
 | --- | --- |
-| Hotspot | Status, on/off button, and hotspot settings. Unsaved changes bring up a floating save toolbar. |
+| Hotspot | Status and on/off button; a public IP card (IP, organization, country); the hotspot's total upload and download rate and totals (needs traffic statistics on); hotspot settings. Unsaved changes bring up a floating save toolbar. |
 | Devices | Connected, offline and blocked devices. Connected and offline devices are sorted by total traffic (upload plus download), highest first. Tap a device to open a sheet with its traffic, routing, details and actions (rename, static IP, rate limit, disconnect temporarily, block). "Disconnect temporarily" kicks a connected device by blocking it for a three-minute cooldown and then removing only that device from the blocklist, so it can reconnect afterwards. |
-| Network | Switches and global settings for per-device routing, custom intranet and traffic statistics. |
+| Network | Switches and global settings for per-device routing, custom intranet and traffic statistics, and the traffic total reset. |
 | Environment | Root status, system information, network tools and active interfaces. |
+
+The public IP comes from public lookup services (ident.me, ipwho.is, then api.ip.sb, first answer wins). The request uses the phone's current default network, so with a VPN up it shows the VPN's exit. It is looked up again when the app opens, when the default network changes, and on refresh. This is the app's only outbound connection and the reason it holds the `INTERNET` permission.
 
 ## Requirements
 

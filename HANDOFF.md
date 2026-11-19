@@ -16,7 +16,7 @@ All six planned phases are implemented and committed on the local `main` branch.
 | 4 | Per-device routing, egress selection, kill switch, IPv6 leak protection | Done |
 | 5 | Custom intranet: subnet, static leases, local DNS, client isolation | Done |
 | 6 | Per-device traffic statistics and rate limits | Done |
-| UI | Material 3 Expressive rewrite, four tabs, FlClash-style floating bottom bar | Done; on-device check partial (see Verification status) |
+| UI | Material 3 Expressive rewrite, four tabs, FlClash-style liquid glass bottom bar, IP and speed cards on Hotspot | Done; on-device check partial (see Verification status) |
 
 Last check results: `assembleDebug` passes, 29 unit tests pass, `lintDebug` reports 0 errors and 2 accepted warnings (`AndroidGradlePluginVersion`, `DataExtractionRules`).
 
@@ -58,7 +58,9 @@ Lint results are easiest to read from `app/build/reports/lint-results-debug.sari
 
 `RoutingService` is one foreground service shared by routing, intranet and traffic. It runs when the hotspot is on and any of the three is enabled (`RoutingRuntime.sync`). `sync` reads the hotspot state from the sticky `android.net.conn.TETHER_STATE_CHANGED` broadcast (extra `tetherArray`), unless the caller passes `hotspotOn`; `HotspotViewModel` passes it after its own start or stop, because the sticky broadcast may lag the AP state. A stopped service does not watch the hotspot: turning the hotspot on from Quick Settings applies no rules until the app is opened (owner decision 2026-11-18). On every trigger it applies intranet, then routing, then traffic. Traffic must be applied last so that its chain sits before the routing chain in `FORWARD`.
 
-The UI has four tabs in `MainScreen` with a floating pill navigation bar, `FloatingNavigationDock` in `ui/components/FloatingNavigationDock.kt`, modeled on FlClash's non-glass `NavigationDock` (sizes and springs taken from its `prism_ui` source). It floats over the content; `MainScreen` provides `LocalDockInset`, and `ScreenScaffold` drops the bottom system inset, adds the dock inset to the content's bottom padding and lifts its floating action button above the dock. Each tab owns its own `ScreenScaffold` (large flexible top app bar). The Devices and Network tabs share one `DevicesViewModel` (both call `viewModel()` with the activity as owner) and both run `DevicesPolling`; only one is visible at a time, so only one poll loop runs. Grouped settings use `SegmentedGroup`, which hands each item its position-based `ListItemShapes`.
+The UI has four tabs in `MainScreen` with a floating liquid-glass navigation bar, `FloatingNavigationDock` in `ui/components/FloatingNavigationDock.kt`, modeled on FlClash's `NavigationDock` (sizes, springs and glass values taken from its `prism_ui` source). `MainScreen` records the tab content into a `GraphicsLayer` (`backdrop`) and draws it; the dock draws that layer again through an AGSL `RuntimeShader` (`ui/components/LiquidGlass.kt`) to refract and blur it, and draws the lifted lens by re-recording backdrop plus bar into a third layer. It floats over the content; `MainScreen` provides `LocalDockInset`, and `ScreenScaffold` drops the bottom system inset, adds the dock inset to the content's bottom padding and lifts its floating action button above the dock. Each tab owns its own `ScreenScaffold` (large flexible top app bar). The Devices and Network tabs share one `DevicesViewModel` (both call `viewModel()` with the activity as owner) and both run `DevicesPolling`; only one is visible at a time, so only one poll loop runs. Grouped settings use `SegmentedGroup`, which hands each item its position-based `ListItemShapes`.
+
+The Hotspot tab also shows a public IP card (`PublicIpViewModel`, `system/PublicIpLookup.kt`) and the hotspot's total speed, which it reads from the shared `DevicesViewModel` and its `DevicesPolling`. The IP lookup is the app's only outbound connection (`INTERNET` permission added 2026-11-19); it tries ident.me, ipwho.is and api.ip.sb in order through the default network, and re-runs on a default-network callback.
 
 All root-side state is produced by pure script generators (`RoutingPlan.toScript`, `IntranetConfig.toScript`, `buildTrafficScript`). Each one validates every external value against a strict pattern before it enters a shell script. Keep that property when you add inputs.
 
@@ -70,6 +72,9 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - **A toggleable `SegmentedListItem` paints its whole row in the selected container color when checked.** `SwitchItem` overrides the selected colors with the normal ones so a switch row does not look selected.
 - **Reinstalling the app as a fresh install drops its KernelSU root grant and all stored settings.** The helper then fails with `su: inaccessible or not found` (exit 127). Check `dumpsys package me.yeeeee.advancehotspot | grep firstInstallTime` before assuming a code regression.
 
+- **FlClash's dock widget is not in the FlClash repository.** `NavigationDock`, `LiquidGlass` and the 22 KB `liquid_glass.frag` live in the `chen08209/prism_ui` submodule (`lib/navigation_dock.dart`, `lib/liquid_glass.dart`, `shaders/liquid_glass.frag`). FlClash's glass is an optional setting; the owner's phone shows the non-glass dock.
+- **A Compose backdrop for glass works by drawing one `GraphicsLayer` in two places.** Record the content in `drawWithContent` (`layer.record { drawContent() }`, then `drawLayer(layer)`), and in the dock draw the same layer translated by `-positionInRoot` inside another layer whose `renderEffect` is the shader. Content changes reach the dock without re-recording it. `dumpsys gfxinfo` shows 0 frames while idle, so it does not redraw in a loop.
+- **`adb shell input motionevent DOWN/MOVE/UP` drives press-and-drag gestures** and lets you screenshot mid-gesture. `sips` cannot crop at an offset here; `ffmpeg -vf crop=w:h:x:y` can.
 - **Hidden APIs must be called as the shell user, not root.** SoftAP and tethering services check that the caller's package belongs to the calling uid. Root has no package. The helper is started with `su 2000 -c 'CLASSPATH=<apk> app_process ...'` and presents itself as `com.android.shell`.
 - **A context wrapper is not enough.** Managers are built on the underlying `ContextImpl`, so the op package name stays `android`. `SoftApBridge` overwrites each manager's `mContext` field with the wrapper. `setOuterContext` did not work.
 - **The system DHCP server owns UDP port 67 and cannot be stopped.** dnsmasq cannot bind next to it. dnsmasq listens on port 1067 (`--dhcp-alternate-port`) and NAT redirects DHCP to it.
@@ -116,7 +121,9 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 | Persistent notification with egress and stop button (2026-11-19) | Verified on device: after turning the hotspot on in the app, the notification reads 熱點已開啟 / 目前出口 tun0 (VPN active) and carries one action. The stop button itself was not pressed (a client was connected) |
 | Device sorting by usage and Hotspot auto refresh (2026-11-19) | Hotspot tab on device: the refresh button is gone and the status updated to on without a manual refresh. Device sorting not checked |
 | Temporary disconnect button (2026-11-19) | Built only; not run on the phone |
-| FlClash-style floating navigation bar (2026-11-19) | Verified on device in dark theme: tap switches tab, dragging the highlight from the last tab to the first switches tab, the end of the Network tab scrolls clear of the bar. Light theme, the Hotspot save toolbar above the bar, and large font scale not checked |
+| FlClash-style floating navigation bar (2026-11-19) | Verified on device in dark theme: tap switches tab, dragging the highlight from the last tab to the first switches tab, the end of the Network tab scrolls clear of the bar. Owner checked the light theme. The Hotspot save toolbar above the bar and large font scale not checked |
+| Liquid glass, lens, jelly, haptics on the dock (2026-11-19) | Verified on device by screenshots mid-gesture: glass bar, lifted magnifying lens, drag across tabs and past the edge, release selects the tab, idle draws no frames. Haptic ticks and mouse hover not verified (cannot be observed through adb) |
+| Public IP card and speed cards on the Hotspot tab (2026-11-19) | Verified on device: IP, country 台灣 and organization shown; speed cards show 0 with the hotspot off; the Network tab keeps only the reset button. Re-lookup on network change and non-zero speeds not checked |
 | Max-clients hint without a number (2026-11-17) | Built and installed; not seen on screen. `uiautomator dump` fails with `could not get idle state` while the app is in front |
 
 ## Known limits
@@ -163,6 +170,13 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-19 (liquid glass dock, IP and speed on Hotspot tab)
+
+- Owner requests: add FlClash's liquid glass, jelly stretch and hover to the dock; haptic ticks while sliding; move the network speed to the Hotspot tab; add FlClash-like IP detection showing only IP, organization and country.
+- Owner decisions: speed is the hotspot total rate, moved from the Network tab (the reset button stays there); glass is a hand-written AGSL shader, no new dependency.
+- Change: `LiquidGlass.kt` (shader: capsule SDF refraction, magnify, dispersion, saturation, tint, rim, touch glow, with a blur chained before it); `FloatingNavigationDock` rewritten with FlClash's lift, travel, follow, press, jelly, glow and hover springs, rubber-band overdrag and bar pull, fling projection, and `CLOCK_TICK` haptics when the lens crosses a tab (FlClash calls `HapticFeedback.selectionClick`). Glass values are approximations: FlClash's haze mix (72% at 15.6 sigma) became a single 10 dp blur, and its 60 dp refraction became 18 dp. New `PublicIpLookup`, `PublicIpViewModel`, `HotspotOverview.kt`, arrow icons, `INTERNET` permission.
+- Checks: build, lint (same 2 accepted warnings), 29 unit tests pass, no Kotlin warnings. On-device checks in Verification status. No unit tests for the IP parsers: `org.json` is a stub in local unit tests.
 
 ### 2026-11-19 (FlClash-style bottom bar)
 

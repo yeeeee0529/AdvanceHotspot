@@ -75,6 +75,8 @@ import me.yeeeee.advancehotspot.ui.components.SectionHeader
 import me.yeeeee.advancehotspot.ui.components.SegmentSurface
 import me.yeeeee.advancehotspot.ui.components.SegmentedGroup
 import me.yeeeee.advancehotspot.ui.components.SwitchItem
+import me.yeeeee.advancehotspot.ui.devices.DevicesPolling
+import me.yeeeee.advancehotspot.ui.devices.DevicesViewModel
 
 private data class Choice(val value: Int, @param:StringRes val label: Int)
 
@@ -93,12 +95,21 @@ private val BAND_CHOICES = listOf(
 )
 
 @Composable
-fun HotspotScreen(modifier: Modifier = Modifier, viewModel: HotspotViewModel = viewModel()) {
+fun HotspotScreen(
+    modifier: Modifier = Modifier,
+    viewModel: HotspotViewModel = viewModel(),
+    devicesViewModel: DevicesViewModel = viewModel(),
+    publicIpViewModel: PublicIpViewModel = viewModel(),
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val devices by devicesViewModel.state.collectAsStateWithLifecycle()
+    val publicIp by publicIpViewModel.state.collectAsStateWithLifecycle()
     val status = state.status
     val draft = state.draft
     val showToolbar = state.isDirty && draft != null
     HotspotPolling(viewModel)
+    // 網路速度來自裝置輪詢的流量統計
+    DevicesPolling(devicesViewModel)
 
     ScreenScaffold(
         title = stringResource(R.string.tab_hotspot),
@@ -126,6 +137,8 @@ fun HotspotScreen(modifier: Modifier = Modifier, viewModel: HotspotViewModel = v
 
         StatusHero(status, state.busy, viewModel::setEnabled)
         state.failure?.let { ErrorBanner(stringResource(R.string.hotspot_operation_failed, it)) }
+        PublicIpCard(publicIp, onRefresh = { publicIpViewModel.refresh() })
+        NetworkSpeedSection(devices.trafficEnabled, devices.traffic.values)
         SettingsSections(
             draft = draft,
             capability = status.capability,

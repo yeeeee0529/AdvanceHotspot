@@ -123,7 +123,6 @@
     <string name="traffic_description">統計每台裝置的即時速率與累計用量，並可個別限制上傳與下載速率。啟用時會停用系統的熱點轉送加速。</string>
     <string name="action_reset_traffic">重設累計用量</string>
     <string name="action_limit">限速</string>
-    <string name="traffic_rates">↑ %1$s　↓ %2$s</string>
     <string name="traffic_limit_summary">上限　↑ %1$s　↓ %2$s</string>
     <string name="traffic_unlimited">不限制</string>
     <string name="limit_title">設定速率上限</string>
@@ -150,5 +149,12 @@
     <string name="traffic_download">下載</string>
     <string name="traffic_upload">上傳</string>
     <string name="traffic_total_value">累計 %1$s</string>
-    <string name="traffic_total_rate">目前總速率</string>
+    <string name="traffic_speed_moved">熱點的即時速率與累計用量顯示在「熱點」分頁。</string>
+    <string name="speed_title">網路速度</string>
+    <string name="speed_traffic_off">開啟「網路」分頁的流量統計後，這裡會顯示熱點的上傳與下載速率。</string>
+    <string name="ip_title">出口 IP</string>
+    <string name="ip_loading">偵測中…</string>
+    <string name="ip_unknown">未知</string>
+    <string name="ip_organization">組織</string>
+    <string name="ip_failed">無法偵測出口 IP：%1$s</string>
 </resources>

@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import me.yeeeee.advancehotspot.R
-import me.yeeeee.advancehotspot.traffic.formatRate
 import me.yeeeee.advancehotspot.ui.components.ChoiceFlow
 import me.yeeeee.advancehotspot.ui.components.HintText
 import me.yeeeee.advancehotspot.ui.components.ScreenScaffold
@@ -54,7 +53,7 @@ fun NetworkScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
     val state by viewModel.state.collectAsStateWithLifecycle()
     // 前景服務的通知需要這個權限才看得到；使用者拒絕時服務仍會執行
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    // 出口狀態與總速率都來自裝置輪詢
+    // 出口狀態來自裝置輪詢
     DevicesPolling(viewModel)
 
     ScreenScaffold(title = stringResource(R.string.tab_network), modifier = modifier) {
@@ -194,16 +193,8 @@ private fun TrafficSection(state: DevicesUiState, onToggle: (Boolean) -> Unit, o
         if (state.trafficEnabled) {
             item("summary") { shapes ->
                 SegmentSurface(shapes) {
-                    val stats = state.traffic.values
-                    Text(stringResource(R.string.traffic_total_rate), style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        stringResource(
-                            R.string.traffic_rates,
-                            formatRate(stats.sumOf { it.upRate }),
-                            formatRate(stats.sumOf { it.downRate }),
-                        ),
-                        style = MaterialTheme.typography.titleLargeEmphasized,
-                    )
+                    // 即時速率移到「熱點」分頁；這裡只保留重設
+                    HintText(stringResource(R.string.traffic_speed_moved))
                     FilledTonalButton(onClick = onReset, shapes = ButtonDefaults.shapes()) {
                         Icon(painterResource(R.drawable.ic_refresh), contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
