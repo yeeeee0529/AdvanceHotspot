@@ -29,7 +29,7 @@ The UI was rewritten to Material 3 Expressive on 2026-11-16. Only the `ui` packa
 - Compose Material 3 is pinned to `1.5.0-rc01` in `gradle/libs.versions.toml`, overriding the BOM. The owner chose this pre-release on purpose because the M3 Expressive components do not exist in the stable 1.4.0. Move to 1.5.0 stable once it is released.
 - Icons are hand-written vector drawables in `res/drawable` (Material Symbols paths). There is no `material-icons` dependency; add new icons the same way.
 - UI strings are Traditional Chinese (`zh-TW`) in `app/src/main/res/values/strings.xml`. Source comments are Traditional Chinese. Identifiers, diagnostics and this file are English.
-- Human documentation is three files kept in sync: `README.md`, `docs/zh-TW/README.md`, `docs/en/README.md`.
+- Human documentation is three files kept in sync: `README.md`, `docs/zh-TW/README.md`, `docs/en/README.md`. The full READMEs keep user-facing sections first and one consolidated "Known limits" list; add new limits there, not under the "How it works" sections.
 
 ## Commands
 
@@ -170,6 +170,13 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-19 (README rewrite)
+
+- Owner request: clean up the human documentation without touching this file; then, separately, record it here and push.
+- Change: the two full READMEs are reordered to Requirements, Build and install, Features, Usage, Known limits, Development, How it works. Known limits from three sections are merged into one list; the Devices tab cell is split into "Temporary disconnect", "Background service and notification" and "Public IP" subsections; the architecture table lists package names under one base path. The root README replaces the phase table with a feature summary and a one-line status.
+- Owner decisions: do not describe the navigation bar as modeled on FlClash; the root status is a feature summary, not phases. The `#status` anchor in the root README is gone.
+- Docs only; no build or test run. Committed as `edaf883`, then this entry, and both pushed to `origin`.
 
 ### 2026-11-19 (push)
 
