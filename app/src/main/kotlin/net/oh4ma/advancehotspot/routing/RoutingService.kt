@@ -44,6 +44,7 @@ import net.oh4ma.advancehotspot.MainActivity
 import net.oh4ma.advancehotspot.hotspot.ApState
 import net.oh4ma.advancehotspot.hotspot.ClientSnapshot
 import net.oh4ma.advancehotspot.hotspot.HotspotController
+import net.oh4ma.advancehotspot.privilege.PrivilegeSettings
 import net.oh4ma.advancehotspot.root.CommandResult
 import net.oh4ma.advancehotspot.root.RootShell
 import net.oh4ma.advancehotspot.traffic.Counter
@@ -97,6 +98,12 @@ object RoutingRuntime {
      *
      * @param hotspotOn 呼叫端剛切換熱點時直接傳入結果；省略時讀取系統的網路共用狀態。
      */
+    /** 切換特權模式後呼叫：停止舊服務（root 模式會在此清除規則），再依熱點狀態以新模式啟動。 */
+    fun restart(context: Context) {
+        context.stopService(Intent(context, RoutingService::class.java))
+        sync(context)
+    }
+
     fun sync(context: Context, hotspotOn: Boolean = isTethering(context)) {
         val intent = Intent(context, RoutingService::class.java)
         if (hotspotOn) {
@@ -139,6 +146,9 @@ class RoutingService : Service() {
     private lateinit var controller: HotspotController
     private lateinit var connectivityManager: ConnectivityManager
 
+    /** 服務建立時的模式；切換模式會重新啟動服務，所以整個生命週期內不變。 */
+    private var rootMode = true
+
     private var snapshot: ClientSnapshot? = null
     private var rulesApplied = false
 
@@ -178,6 +188,7 @@ class RoutingService : Service() {
         publishTraffic(resetRates = true)
         resolver = EgressResolver(this)
         controller = HotspotController(applicationInfo.sourceDir)
+        rootMode = PrivilegeSettings.rootFeaturesAvailable
         connectivityManager = getSystemService(ConnectivityManager::class.java)
 
         egressLabel = currentEgressLabel(null)
@@ -232,8 +243,8 @@ class RoutingService : Service() {
         scope.cancel()
         RoutingRuntime.status.value = RoutingStatus()
         trafficStore.saveTotals(totals)
-        // 服務的 scope 已取消，收尾工作交給獨立的 scope 完成
-        CoroutineScope(Dispatchers.IO).launch {
+        // 服務的 scope 已取消，收尾工作交給獨立的 scope 完成；Shizuku 模式從未寫入任何規則
+        if (rootMode) CoroutineScope(Dispatchers.IO).launch {
             val (iface, gateway) = intranetApplied ?: (null to intranetStore.gateway)
             RootShell.run(
                 "pkill -f '$WATCH_PROCESS_PATTERN'",
@@ -249,8 +260,21 @@ class RoutingService : Service() {
         trigger.trySend(Unit)
     }
 
-    /** 在專用的 root shell 執行 helper 的監看模式；helper 結束就重新啟動。 */
+    /** 監看連線裝置；監看中斷就重新啟動。 */
     private suspend fun watchClients() {
+        if (!rootMode) {
+            while (scope.isActive) {
+                runCatching {
+                    controller.watchViaShizuku { event ->
+                        snapshot = event
+                        requestApply()
+                    }
+                }
+                delay(WATCH_RESTART_DELAY_MS)
+            }
+            return
+        }
+        // 在專用的 root shell 執行 helper 的監看模式
         val output = object : CallbackList<String>() {
             override fun onAddElement(line: String) {
                 snapshot = controller.parseWatchEvent(line) ?: return

@@ -20,6 +20,8 @@ All six planned phases are implemented and committed on the local `main` branch.
 
 Last check results: `assembleDebug` passes, 29 unit tests pass, `lintDebug` reports 0 errors and 2 accepted warnings (`AndroidGradlePluginVersion`, `DataExtractionRules`).
 
+On 2026-11-19 a Shizuku mode was added at the owner's request (not pushed). The owner chose a manual Root/Shizuku switch on the Environment tab (default Root) and to keep the foreground notification in Shizuku mode. Shizuku mode covers hotspot settings, on/off and device management only; routing, intranet and traffic need root and are disabled. See the 2026-11-19 (Shizuku mode) log entry.
+
 The UI was rewritten to Material 3 Expressive on 2026-11-16. Only the `ui` package, `MainActivity`-adjacent theme, resources and docs changed; no view model, script generator or root-side code changed.
 
 ## Target and tooling
@@ -56,7 +58,8 @@ Lint results are easiest to read from `app/build/reports/lint-results-debug.sari
 | Package (under `app/src/main/kotlin/net/oh4ma/advancehotspot`) | Role |
 | --- | --- |
 | `root` | `RootShell`, the single entry point for root commands through libsu |
-| `helper` | `HelperMain` and `SoftApBridge`: a command-line helper run with `app_process` as the shell user |
+| `helper` | `HelperMain` and `SoftApBridge`: a command-line helper run with `app_process` as the shell user (Root mode). `HelperUserService` runs the same `HelperMain.execute` dispatch inside a Shizuku UserService (Shizuku mode); AIDL in `app/src/main/aidl/.../helper/` |
+| `privilege` | `PrivilegeSettings` (stored mode, `rootFeaturesAvailable`), `ShizukuClient` (state, permission, UserService binding, shell), `PrivilegedShell` (read-only commands through root or Shizuku) |
 | `hotspot` | Hotspot model, validation, and `HotspotController`, which invokes the helper |
 | `devices` | Nicknames and last-seen hostnames stored by MAC address |
 | `routing` | Routing policy, rule script generator, egress resolution, and `RoutingService` |
@@ -73,6 +76,14 @@ The Hotspot tab also shows a public IP card (`PublicIpViewModel`, `system/Public
 All root-side state is produced by pure script generators (`RoutingPlan.toScript`, `IntranetConfig.toScript`, `buildTrafficScript`). Each one validates every external value against a strict pattern before it enters a shell script. Keep that property when you add inputs.
 
 ## Findings that cost time to discover
+
+- **Shizuku started with root runs its server and UserService as uid 0**, so it cannot drive the hotspot APIs (same package-uid check as for root). To restart it as shell: stop it from the Shizuku app menu first (an ADB shell cannot kill the root `shizuku_server`, the starter fails with `can't kill`), then run `adb shell <shizuku apk dir>/lib/arm64/libshizuku.so` (the directory comes from `pm path moe.shizuku.privileged.api`). The app's Shizuku permission survives the restart and app reinstalls.
+- **Granting KernelSU root to Shell (uid 2000) makes `adb shell` itself root** (`uid=0`, context `u:r:ksu:s0`). The adb-started `shizuku_server` (uid 2000) disappeared around the time of that grant; that KernelSU kills the uid's processes on a grant is a guess, not confirmed. Afterwards, running `libshizuku.so` from `adb shell` starts Shizuku as root; `su 2000 -c <libshizuku.so>` starts it as uid 2000 but in the `ksu` domain (`runcon u:r:shell:s0` fails with Permission denied on exec).
+- **After Shizuku restarts, an already running AdvanceHotspot may not get the new binder** and shows Shizuku 未執行 until the app process is restarted. Seen twice when Shizuku was started from the `ksu` domain; once, when it was started from a plain shell-domain `adb shell`, the running app did get it. Not investigated further.
+- **`uiautomator dump` fails with `could not get idle state` while the app is in front** (also noted earlier). Tap by coordinates taken from `screencap` instead; screenshots are 1344x2992.
+- **Root-only features are gated in the stores**: `RoutingStore.enabled`, `IntranetStore.enabled` and `TrafficStore.enabled` return false in Shizuku mode while keeping the saved value. `RoutingService` captures the mode at `onCreate`; `RoutingRuntime.restart` stops and restarts it on a mode switch so the old instance tears down rules with root.
+- **`HelperMain.createShellContext` uses `ActivityThread.currentActivityThread()` before `systemMain()`**, because the Shizuku UserService process already has an `ActivityThread`. Calling `systemMain()` a second time was avoided, not tried.
+- **The renamed package `net.oh4ma.advancehotspot` was first installed on the phone on 2026-11-19 (Shizuku session)** and has no KernelSU grant. The old `me.yeeeee.advancehotspot` app is still installed, still running its service, and holds the owner's routing, intranet and traffic state.
 
 Read these before changing the helper, the DHCP path, or the firewall rules.
 
@@ -108,6 +119,22 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 
 ## Verification status
 
+Shizuku mode (2026-11-19), checked on the phone with Shizuku restarted through ADB as the shell user:
+
+| Area | Status |
+| --- | --- |
+| Mode switch, Network tab switches disabled with hint, Environment hero states | Verified on device by screenshot: Root (not granted), Shizuku not authorized with the Request permission button, Shizuku authorized |
+| Shizuku permission request and UserService | Verified: the dialog appeared, after allowing it a `net.oh4ma.advancehotspot:helper` process ran as `shell`; kernel and SELinux values came through `PrivilegedShell` |
+| Hotspot status, settings read, on and off through Shizuku | Verified: status and SSID loaded, the hotspot started (channel 149) and stopped from the app; the foreground service and notification came up and went away with it |
+| Device list through Shizuku | Verified: one connected test client listed with IP and hostname |
+| Device watch through the binder callback in `RoutingService` | Verified indirectly: with the hotspot on, the `:helper` process holds two persistent tethering callbacks (count drops by 2 when it dies). A one-off root `HelperMain watch` process also adds exactly 2, so this is the watch plus `TetheringManager`'s own per-process callback, not a leak. Event delivery to the app was not observed directly |
+| `WRONG_UID` state (Shizuku started with root) | Verified on device by screenshot after a relaunch of the app: 以 root 啟動 with the hint |
+| Saving settings, blocking and temporary disconnect through Shizuku | Not tested |
+| Root mode after the refactor (`SoftApBridge.startWatching`, `HelperMain.execute`) | Verified after the owner granted KernelSU: root status, hotspot on through the root helper, `HelperMain watch` running as shell under `su 2000`, and `ah_traffic` rebuilt with the connected client's address (so watch events reached the service) |
+| Rule teardown when switching from Root to Shizuku | Verified with the hotspot on and traffic statistics enabled: `ah_traffic` left `FORWARD` and was deleted, the root watch process ended, the service restarted in Shizuku mode and the `:helper` process took over |
+
+Earlier areas:
+
 | Area | Status |
 | --- | --- |
 | Hotspot on/off, band, forced channel, max clients | Verified on device |
@@ -136,6 +163,8 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 
 ## Known limits
 
+- Shizuku mode works only when Shizuku runs as the shell user (started with ADB or wireless debugging). Started with root, its UserService is uid 0 and the hidden APIs reject it; the app reports this as `WRONG_UID`.
+
 - Rate limits and traffic counters cover IPv4 only.
 - Devices with a non-default routing policy have no IPv6.
 - A device bound to a specific egress cannot resolve `.lan` names, because its DNS is redirected to that network's DNS server.
@@ -145,6 +174,8 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - Turning routing or traffic off does not re-attach BPF offload; it returns the next time the hotspot starts.
 
 ## State left on the test phone
+
+- 2026-11-19 (Shizuku session): `net.oh4ma.advancehotspot` debug build installed for the first time. The owner then granted KernelSU superuser to it and to Shell (`com.android.shell`), so `adb shell` is root. The app is left in Root mode with routing, intranet and traffic off; it also holds a Shizuku permission. Shizuku was restarted several times and now runs as uid 2000 in the `ksu` domain (started with `su 2000`); it returns to root if the owner restarts it with root or the phone reboots with start-on-boot. Shizuku had 0 authorized apps before. The hotspot was turned on and off with the owner's consent and is left off, as found; while it was on, up to 9 remembered clients joined without the old app's rules. The old `me.yeeeee.advancehotspot` app was not touched; the two apps share iptables chain names and the `HelperMain watch` pkill pattern, so either app's teardown removes the other's rules.
 
 - As found on 2026-11-16 (DHCP fix session), set by the owner and left unchanged: hotspot on with several clients, intranet on with a custom gateway, routing on, traffic on, and a VPN active on the phone. The routing chain currently drops all forwarding for every client; this is the owner's policy state, not something an agent set.
 - The app was updated in place (`adb install -r`) with the DHCP fix; settings and the root grant were kept.
@@ -165,6 +196,8 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 
 Nothing is in progress. Candidates, none of them started or agreed with the owner:
 
+000. Shizuku mode gaps: try saving settings and blocking through Shizuku; check whether a running app picks up a restarted Shizuku when it is started from a plain `adb shell` (consider `Shizuku.addBinderReceivedListener` to refresh the UI). The owner may want to revoke Shell's KernelSU grant and uninstall `me.yeeeee.advancehotspot`.
+
 00. More than 10 clients needs a route around the firmware, since the limit cannot be raised (see findings). Candidates, none started or agreed: put a travel router or repeater in NAT/WISP mode behind the hotspot so it counts as one client; feed an external access point through USB or Ethernet tethering; detect the real limit with a native `maxassoc` reader (needs the NDK). The owner declined that on 2026-11-17 and chose to show no number instead.
 
 0. Finish the on-device check of the new UI: floating save toolbar, device rows and sheet with a real client, and light theme.
@@ -178,6 +211,13 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-19 (Shizuku mode)
+
+- Owner request: add a Shizuku mode. Owner decisions: manual Root/Shizuku switch on the Environment tab, default Root; keep the foreground notification in Shizuku mode; allowed restarting Shizuku through ADB as shell, granting the app's Shizuku permission, and turning the hotspot on and off once.
+- Change: Shizuku `api` and `provider` 13.1.5, `ShizukuProvider` in the manifest, AIDL enabled. New `privilege` package and `HelperUserService`. `SoftApBridge.watch` became `startWatching`, returning an unregister function; `HelperMain` keeps the stdin-EOF wait and exposes `execute`. `HotspotController` routes by mode and adds `watchViaShizuku`. Root-only stores read as disabled in Shizuku mode; the Network tab disables their switches with a hint. `EnvironmentProbe` uses `PrivilegedShell` and reports the mode; Hotspot tab refreshes on a mode switch. Three READMEs document the mode.
+- Checks: `assembleDebug`, `lintDebug` (same 2 accepted warnings), 29 unit tests pass. On the phone, see Verification status (Shizuku mode): Shizuku mode, Root mode after the refactor, and the Root-to-Shizuku teardown were checked after the owner granted KernelSU to the app and to Shell.
+- Unfinished: saving settings and blocking through Shizuku are untested.
 
 ### 2026-11-19 (public repository, package rename, CI and releases)
 

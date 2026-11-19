@@ -7,6 +7,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.oh4ma.advancehotspot.hotspot.ApState
@@ -15,6 +16,7 @@ import net.oh4ma.advancehotspot.hotspot.HotspotConfig
 import net.oh4ma.advancehotspot.hotspot.HotspotController
 import net.oh4ma.advancehotspot.hotspot.HotspotStatus
 import net.oh4ma.advancehotspot.hotspot.validate
+import net.oh4ma.advancehotspot.privilege.PrivilegeSettings
 import net.oh4ma.advancehotspot.routing.RoutingRuntime
 
 data class HotspotUiState(
@@ -37,6 +39,8 @@ class HotspotViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         refresh()
+        // 切換特權模式後以新模式重新讀取，並清掉舊模式留下的錯誤
+        viewModelScope.launch { PrivilegeSettings.mode.drop(1).collect { refresh() } }
     }
 
     /**

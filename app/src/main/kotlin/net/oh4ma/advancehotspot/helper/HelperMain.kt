@@ -37,29 +37,43 @@ object HelperMain {
             if (Looper.getMainLooper() == null) Looper.prepareMainLooper()
             val bridge = SoftApBridge(createShellContext())
             if (args.firstOrNull() == "watch") {
-                bridge.watch { event ->
+                bridge.startWatching { event ->
                     println(EVENT_PREFIX + event)
                     System.out.flush()
                 }
+                // 父行程關閉管線時 stdin 會讀到 EOF，藉此跟著結束，不留下孤兒行程
+                while (System.`in`.read() != -1) {
+                    // 輸入內容本身沒有意義，只等待 EOF
+                }
+                exitProcess(0)
             }
-            val result = when (val command = args.firstOrNull()) {
-                "status" -> bridge.status()
-                "set-config" -> bridge.applyConfig(decodeJsonArgument(args))
-                "clients" -> bridge.clients()
-                "set-blocked" -> bridge.setBlocked(decodeJsonArgument(args))
-                "start" -> bridge.start()
-                "stop" -> bridge.stop()
-                else -> throw IllegalArgumentException("Unknown command: $command")
-            }
-            result.put("ok", true)
+            execute(bridge, args)
         } catch (throwable: Throwable) {
-            val cause = unwrap(throwable)
-            JSONObject().put("ok", false).put("error", cause.toString())
+            failure(throwable)
         }
         println(RESPONSE_PREFIX + response)
         System.out.flush()
         exitProcess(if (response.optBoolean("ok")) 0 else 1)
     }
+
+    /** 執行 `watch` 以外的單次指令，回傳含 `ok` 欄位的回應；root 的指令列與 Shizuku 的 UserService 共用。 */
+    fun execute(bridge: SoftApBridge, args: Array<String>): JSONObject = try {
+        val result = when (val command = args.firstOrNull()) {
+            "status" -> bridge.status()
+            "set-config" -> bridge.applyConfig(decodeJsonArgument(args))
+            "clients" -> bridge.clients()
+            "set-blocked" -> bridge.setBlocked(decodeJsonArgument(args))
+            "start" -> bridge.start()
+            "stop" -> bridge.stop()
+            else -> throw IllegalArgumentException("Unknown command: $command")
+        }
+        result.put("ok", true)
+    } catch (throwable: Throwable) {
+        failure(throwable)
+    }
+
+    private fun failure(throwable: Throwable): JSONObject =
+        JSONObject().put("ok", false).put("error", unwrap(throwable).toString())
 
     private fun decodeJsonArgument(args: Array<String>): JSONObject {
         val encoded = args.getOrNull(1) ?: throw IllegalArgumentException("Missing base64 JSON argument")
@@ -72,9 +86,11 @@ object HelperMain {
      * 由系統 Context 衍生出來的套件 Context 會沿用 `android` 作為 op package name，
      * 系統服務比對 uid 時會拒絕，因此另外包一層覆寫身分。
      */
-    private fun createShellContext(): Context {
+    fun createShellContext(): Context {
         val activityThreadClass = Class.forName("android.app.ActivityThread")
-        val activityThread = activityThreadClass.getMethod("systemMain").invoke(null)
+        // Shizuku 的 UserService 行程啟動時已建立過 ActivityThread，重複建立會失敗，所以先沿用現有的
+        val activityThread = activityThreadClass.getMethod("currentActivityThread").invoke(null)
+            ?: activityThreadClass.getMethod("systemMain").invoke(null)
         val systemContext = activityThreadClass.getMethod("getSystemContext").invoke(activityThread) as Context
         return ShellContext(systemContext.createPackageContext(SHELL_PACKAGE, 0))
     }

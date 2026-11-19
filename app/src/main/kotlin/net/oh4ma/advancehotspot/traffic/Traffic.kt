@@ -2,6 +2,7 @@ package net.oh4ma.advancehotspot.traffic
 
 import android.content.Context
 import java.util.Locale
+import net.oh4ma.advancehotspot.privilege.PrivilegeSettings
 
 /** 單一裝置的速率上限，單位 kbit/s；0 代表不限制。 */
 data class TrafficLimit(val upKbit: Int = 0, val downKbit: Int = 0) {
@@ -153,8 +154,9 @@ private fun requireMatch(pattern: Regex, value: String): String {
 class TrafficStore(context: Context) {
     private val preferences = context.getSharedPreferences("traffic", Context.MODE_PRIVATE)
 
+    /** Shizuku 模式下一律視為關閉；儲存的設定不變，切回 root 模式就會恢復。 */
     var enabled: Boolean
-        get() = preferences.getBoolean(KEY_ENABLED, false)
+        get() = preferences.getBoolean(KEY_ENABLED, false) && PrivilegeSettings.rootFeaturesAvailable
         set(value) = preferences.edit().putBoolean(KEY_ENABLED, value).apply()
 
     fun limits(): Map<String, TrafficLimit> = readPairs(LIMIT_PREFIX) { up, down ->

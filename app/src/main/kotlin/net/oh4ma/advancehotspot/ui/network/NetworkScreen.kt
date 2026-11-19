@@ -57,6 +57,13 @@ fun NetworkScreen(modifier: Modifier = Modifier, viewModel: DevicesViewModel = v
     DevicesPolling(viewModel)
 
     ScreenScaffold(title = stringResource(R.string.tab_network), modifier = modifier) {
+        if (!state.rootFeatures) {
+            SegmentedGroup(Modifier.padding(top = 8.dp)) {
+                item("shizuku") { shapes ->
+                    SegmentSurface(shapes) { HintText(stringResource(R.string.network_requires_root)) }
+                }
+            }
+        }
         RoutingSection(
             state = state,
             onToggle = { enabled ->
@@ -85,6 +92,7 @@ private fun RoutingSection(
                 supporting = stringResource(R.string.routing_description),
                 checked = state.routingEnabled,
                 onCheckedChange = onToggle,
+                enabled = state.rootFeatures,
                 icon = R.drawable.ic_network,
             )
         }
@@ -135,6 +143,7 @@ private fun IntranetSection(state: DevicesUiState, onToggle: (Boolean) -> Unit, 
                 supporting = stringResource(R.string.intranet_description),
                 checked = state.intranetEnabled,
                 onCheckedChange = onToggle,
+                enabled = state.rootFeatures,
                 icon = R.drawable.ic_devices,
             )
         }
@@ -187,6 +196,7 @@ private fun TrafficSection(state: DevicesUiState, onToggle: (Boolean) -> Unit, o
                 supporting = stringResource(R.string.traffic_description),
                 checked = state.trafficEnabled,
                 onCheckedChange = onToggle,
+                enabled = state.rootFeatures,
                 icon = R.drawable.ic_speed,
             )
         }

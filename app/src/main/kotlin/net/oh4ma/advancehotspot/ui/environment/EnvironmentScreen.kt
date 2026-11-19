@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,12 +32,17 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import net.oh4ma.advancehotspot.R
+import net.oh4ma.advancehotspot.privilege.PrivilegeMode
+import net.oh4ma.advancehotspot.privilege.ShizukuState
 import net.oh4ma.advancehotspot.system.EnvironmentInfo
+import net.oh4ma.advancehotspot.ui.components.ChoiceFlow
+import net.oh4ma.advancehotspot.ui.components.HintText
 import net.oh4ma.advancehotspot.ui.components.InfoItem
 import net.oh4ma.advancehotspot.ui.components.LoadingBox
 import net.oh4ma.advancehotspot.ui.components.MorphingBadge
 import net.oh4ma.advancehotspot.ui.components.ScreenScaffold
 import net.oh4ma.advancehotspot.ui.components.SectionHeader
+import net.oh4ma.advancehotspot.ui.components.SegmentSurface
 import net.oh4ma.advancehotspot.ui.components.SegmentedGroup
 
 @Composable
@@ -55,15 +62,41 @@ fun EnvironmentScreen(modifier: Modifier = Modifier, viewModel: EnvironmentViewM
         if (info == null) {
             LoadingBox(Modifier.padding(top = 120.dp))
         } else {
-            EnvironmentContent(info)
+            EnvironmentContent(info, viewModel::setMode, viewModel::requestShizukuPermission)
         }
     }
 }
 
 @Composable
-private fun EnvironmentContent(info: EnvironmentInfo) {
+private fun EnvironmentContent(
+    info: EnvironmentInfo,
+    onMode: (PrivilegeMode) -> Unit,
+    onRequestShizukuPermission: () -> Unit,
+) {
     val unknown = stringResource(R.string.value_unknown)
-    RootHero(info.rootGranted)
+    PrivilegeHero(info, onRequestShizukuPermission)
+
+    SectionHeader(stringResource(R.string.privilege_title))
+    SegmentedGroup {
+        item("mode") { shapes ->
+            SegmentSurface(shapes) {
+                ChoiceFlow(
+                    options = PrivilegeMode.entries,
+                    selected = info.mode,
+                    label = {
+                        stringResource(
+                            when (it) {
+                                PrivilegeMode.ROOT -> R.string.privilege_mode_root
+                                PrivilegeMode.SHIZUKU -> R.string.privilege_mode_shizuku
+                            },
+                        )
+                    },
+                    onSelect = onMode,
+                )
+                HintText(stringResource(R.string.privilege_mode_hint))
+            }
+        }
+    }
 
     SectionHeader(stringResource(R.string.system_title))
     SegmentedGroup {
@@ -124,7 +157,36 @@ private fun EnvironmentContent(info: EnvironmentInfo) {
 }
 
 @Composable
-private fun RootHero(granted: Boolean) {
+private fun PrivilegeHero(info: EnvironmentInfo, onRequestShizukuPermission: () -> Unit) {
+    val granted = info.privilegeReady
+    val title: Int
+    val status: Int
+    val hint: Int?
+    if (info.mode == PrivilegeMode.ROOT) {
+        title = R.string.root_title
+        status = if (granted) R.string.root_granted else R.string.root_denied
+        hint = if (granted) null else R.string.root_denied_hint
+    } else {
+        title = R.string.shizuku_title
+        when (info.shizukuState) {
+            ShizukuState.READY, null -> {
+                status = R.string.shizuku_ready
+                hint = null
+            }
+            ShizukuState.NOT_RUNNING -> {
+                status = R.string.shizuku_not_running
+                hint = R.string.shizuku_not_running_hint
+            }
+            ShizukuState.PERMISSION_REQUIRED -> {
+                status = R.string.shizuku_permission_required
+                hint = R.string.shizuku_permission_hint
+            }
+            ShizukuState.WRONG_UID -> {
+                status = R.string.shizuku_wrong_uid
+                hint = R.string.shizuku_wrong_uid_hint
+            }
+        }
+    }
     val scheme = MaterialTheme.colorScheme
     Surface(
         color = if (granted) scheme.primaryContainer else scheme.errorContainer,
@@ -150,13 +212,17 @@ private fun RootHero(granted: Boolean) {
             }
             Spacer(Modifier.width(20.dp))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(stringResource(R.string.root_title), style = MaterialTheme.typography.labelLarge)
-                Text(
-                    stringResource(if (granted) R.string.root_granted else R.string.root_denied),
-                    style = MaterialTheme.typography.headlineMediumEmphasized,
-                )
-                if (!granted) {
-                    Text(stringResource(R.string.root_denied_hint), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(title), style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(status), style = MaterialTheme.typography.headlineMediumEmphasized)
+                hint?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyMedium) }
+                if (info.shizukuState == ShizukuState.PERMISSION_REQUIRED) {
+                    Button(
+                        onClick = onRequestShizukuPermission,
+                        shapes = ButtonDefaults.shapes(),
+                        modifier = Modifier.padding(top = 8.dp),
+                    ) {
+                        Text(stringResource(R.string.action_request_permission))
+                    }
                 }
             }
         }

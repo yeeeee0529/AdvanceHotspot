@@ -7,7 +7,7 @@ AdvanceHotspot is an Android app that extends the system Wi-Fi hotspot on a root
 ## Requirements
 
 - Pixel 9 Pro XL on Android 17 (API 37). Other devices are not supported, because the app relies on hidden APIs of one Android release
-- Root through KernelSU
+- Root through KernelSU. Without root, [Shizuku mode](#shizuku-mode) is available, limited to hotspot settings, on/off and device management
 - To build: JDK 17 or newer and Android SDK platform 37
 
 ## Install
@@ -24,6 +24,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 The package name is `net.oh4ma.advancehotspot`. KernelSU does not prompt for root. Open the KernelSU manager, enable superuser for AdvanceHotspot, then tap Refresh (重新整理) in the app.
 
+To run without root, see [Shizuku mode](#shizuku-mode).
+
 ## Features
 
 - Hotspot settings: SSID, passphrase, security type, band, channel, maximum client count, hidden SSID
@@ -35,6 +37,7 @@ The package name is `net.oh4ma.advancehotspot`. KernelSU does not prompt for roo
 - Intranet: custom subnet and gateway, static IP binding by MAC, local DNS names, client isolation
 - Per-device traffic statistics and rate limits
 - Public IP and total hotspot speed on the Hotspot tab
+- Shizuku mode: hotspot settings, on/off and device management without root
 
 ## Usage
 
@@ -70,6 +73,26 @@ Turning the hotspot off in the app stops the service and clears the notification
 
 The public IP comes from public lookup services, tried in order: ident.me, ipwho.is, api.ip.sb. The request uses the phone's current default network, so with a VPN up it shows the VPN's exit. It is looked up again when the app opens, when the default network changes, and on refresh. This is the app's only outbound connection and the reason it holds the `INTERNET` permission.
 
+### Shizuku mode
+
+Switch between Root and Shizuku under Privilege mode (特權模式) on the Environment tab. Root is the default.
+
+| Feature | Root | Shizuku |
+| --- | --- | --- |
+| Hotspot settings and on/off | ✓ | ✓ |
+| Device list, nicknames, blocking, temporary disconnect | ✓ | ✓ |
+| Foreground notification with the Turn off hotspot button | ✓ | ✓ |
+| Per-device routing, kill switch, IPv6 leak protection | ✓ | ✗ |
+| Custom intranet | ✓ | ✗ |
+| Traffic statistics and rate limits | ✓ | ✗ |
+
+To use it:
+
+1. Install [Shizuku](https://shizuku.rikka.app/) and start it with ADB or wireless debugging. Shizuku started with root does not work; see below
+2. On the Environment tab, choose Shizuku, tap Request permission (請求授權), and allow the app in Shizuku's dialog
+
+In Shizuku mode the three switches on the Network tab are disabled. Their saved settings are kept and come back when you switch to Root mode. Switching modes restarts the foreground service; switching from Root to Shizuku first removes the applied rules.
+
 ## Known limits
 
 - Only the Pixel 9 Pro XL on Android 17 is supported
@@ -79,6 +102,7 @@ The public IP comes from public lookup services, tried in order: ident.me, ipwho
 - A device that uses its own encrypted DNS (DoH or DoT) is still routed through the chosen egress, but the DNS redirect does not apply to it
 - Mobile data as an egress is untested, and carriers that provide IPv4 through 464XLAT are not handled yet
 - The intranet subnet is always a /24
+- Shizuku must be started with ADB or wireless debugging. When it is started with root, its processes run as uid 0, the hidden hotspot APIs reject the calls, and the Environment tab shows that Shizuku runs as root
 - Devices that are already connected keep their old address until they reconnect or their lease runs out. The same applies after turning the intranet off, so reconnect devices then
 - Turning routing or traffic statistics off does not re-attach the system's tethering BPF offload programs. They return the next time the hotspot starts
 - Only connected devices can be given a rate limit
@@ -99,7 +123,8 @@ Sources live under `app/src/main/kotlin/net/oh4ma/advancehotspot/`:
 | Package | Role |
 | --- | --- |
 | `root` | Single entry point for root commands (libsu) |
-| `helper` | Command-line helper run with `app_process` as the shell user; calls hidden SoftAP and tethering APIs |
+| `privilege` | Privilege mode setting, the Shizuku connection, and the read-only command entry point that picks root or Shizuku |
+| `helper` | Helper that calls hidden SoftAP and tethering APIs as the shell user: a command line run with `app_process` in Root mode, a UserService in Shizuku mode |
 | `hotspot` | Hotspot model, validation, and the controller that invokes the helper |
 | `devices` | Nicknames and last-seen hostnames stored by MAC address |
 | `routing` | Routing policy, rule script generator, egress resolution and the foreground service |
@@ -115,6 +140,8 @@ Unit tests cover only the pure script generators and parsers. When a change touc
 ### Hotspot control
 
 Hidden SoftAP and tethering APIs verify that the caller's package name belongs to the calling uid. Root (uid 0) has no package, so those calls are rejected. The app therefore uses root only to drop to the shell user (uid 2000) and runs a small helper from its own APK with `app_process`. The `com.android.shell` package holds `NETWORK_SETTINGS` and `TETHER_PRIVILEGED`, which is enough to write the SoftAP configuration and start tethering.
+
+Shizuku mode uses a Shizuku UserService instead. Shizuku started with ADB runs as the shell user and so does its UserService process, so the same helper code runs there and returns results over AIDL; device watching uses a binder callback.
 
 A forced hotspot channel takes effect even while the phone is connected to Wi-Fi on a different channel (verified on the Pixel 9 Pro XL).
 

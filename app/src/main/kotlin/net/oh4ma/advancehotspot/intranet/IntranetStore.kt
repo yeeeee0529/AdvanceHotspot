@@ -2,14 +2,16 @@ package net.oh4ma.advancehotspot.intranet
 
 import android.content.Context
 import net.oh4ma.advancehotspot.hotspot.ClientSnapshot
+import net.oh4ma.advancehotspot.privilege.PrivilegeSettings
 import net.oh4ma.advancehotspot.root.RootShell
 
 /** 內網的持久化設定。 */
 class IntranetStore(private val context: Context) {
     private val preferences = context.getSharedPreferences("intranet", Context.MODE_PRIVATE)
 
+    /** Shizuku 模式下一律視為關閉；儲存的設定不變，切回 root 模式就會恢復。 */
     var enabled: Boolean
-        get() = preferences.getBoolean(KEY_ENABLED, false)
+        get() = preferences.getBoolean(KEY_ENABLED, false) && PrivilegeSettings.rootFeaturesAvailable
         set(value) = preferences.edit().putBoolean(KEY_ENABLED, value).apply()
 
     var gateway: String

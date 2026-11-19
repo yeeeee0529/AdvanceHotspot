@@ -35,6 +35,15 @@
                 android:value="Keeps per-device hotspot routing rules in sync with connected clients and network changes" />
         </service>
 
+        <!-- Shizuku 透過這個 provider 把 binder 交給 app；權限限制只有系統（Shizuku 伺服器）能呼叫 -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
         <receiver
             android:name=".routing.BootReceiver"
             android:exported="false">

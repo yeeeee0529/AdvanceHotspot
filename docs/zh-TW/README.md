@@ -7,7 +7,7 @@ AdvanceHotspot 是一個 Android app，在已 root 的手機上擴充系統 Wi-F
 ## 需求
 
 - Pixel 9 Pro XL、Android 17（API 37）。app 依賴單一 Android 版本的隱藏 API，目前不支援其他裝置
-- 透過 KernelSU 取得 root
+- 透過 KernelSU 取得 root；沒有 root 時可改用 [Shizuku 模式](#shizuku-模式)，但只剩熱點設定、開關與裝置管理
 - 建置需要 JDK 17 以上與 Android SDK platform 37
 
 ## 安裝
@@ -24,6 +24,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 套件名稱是 `net.oh4ma.advancehotspot`。KernelSU 不會跳出授權提示。請開啟 KernelSU 管理器，替 AdvanceHotspot 開啟超級使用者權限，再回到 app 按「重新整理」。
 
+不使用 root 時，請改看 [Shizuku 模式](#shizuku-模式)。
+
 ## 功能
 
 - 熱點設定：SSID、密碼、加密方式、頻段、頻道、最大連線數、隱藏 SSID
@@ -35,6 +37,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - 內網：自訂網段與閘道、依 MAC 綁定固定 IP、本地 DNS 名稱、裝置間隔離
 - 每台裝置的流量統計與限速
 - 熱點分頁顯示出口 IP 與熱點總速率
+- Shizuku 模式：不需要 root 也能使用熱點設定、開關與裝置管理
 
 ## 使用方式
 
@@ -68,6 +71,26 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 出口 IP 由公開的 IP 查詢服務查得，依序嘗試 ident.me、ipwho.is、api.ip.sb。請求走手機目前的預設網路，所以手機連著 VPN 時顯示的是 VPN 的出口。開啟 app、預設網路改變或按重新整理時會重查。這是 app 唯一的對外連線，因此需要 `INTERNET` 權限。
 
+### Shizuku 模式
+
+在「環境」分頁的「特權模式」可以切換 Root 與 Shizuku，預設為 Root。
+
+| 功能 | Root | Shizuku |
+| --- | --- | --- |
+| 熱點設定與開關 | ✓ | ✓ |
+| 裝置清單、暱稱、封鎖、暫時中斷連線 | ✓ | ✓ |
+| 前景通知與「關閉熱點」按鈕 | ✓ | ✓ |
+| 每裝置路由、kill switch、IPv6 防漏 | ✓ | ✗ |
+| 自訂內網 | ✓ | ✗ |
+| 流量統計與限速 | ✓ | ✗ |
+
+使用步驟：
+
+1. 安裝 [Shizuku](https://shizuku.rikka.app/)，並以 ADB 或無線偵錯啟動。以 root 啟動的 Shizuku 不能用，見下方說明
+2. 在「環境」分頁選擇 Shizuku，按「請求授權」，在 Shizuku 的對話框中允許本 app
+
+Shizuku 模式下，「網路」分頁的三個開關會停用，原本的設定會保留，切回 Root 模式後恢復。切換模式時，前景服務會重新啟動；從 Root 切到 Shizuku 時，已套用的規則會先清除。
+
 ## 已知限制
 
 - 只支援 Pixel 9 Pro XL 與 Android 17
@@ -77,6 +100,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - 裝置自行使用加密 DNS（DoH 或 DoT）時，流量仍走指定出口，但 DNS 導向對它無效
 - 以行動網路為出口尚未實測，電信商以 464XLAT 提供 IPv4 的情況也還沒處理
 - 內網網段固定為 /24
+- Shizuku 必須以 ADB 或無線偵錯啟動。以 root 啟動時，它的行程是 uid 0，熱點的隱藏 API 會拒絕呼叫，「環境」分頁會顯示「以 root 啟動」
 - 已連線的裝置會沿用舊位址，直到重新連線或租約到期。關閉內網後也一樣，屆時請讓裝置重新連線
 - 關閉路由控制或流量統計後，系統的 tethering BPF offload 程式不會重新掛回，下次開啟熱點時才會恢復
 - 只有連線中的裝置可以設定速率上限
@@ -97,7 +121,8 @@ GitHub Actions 會在每次 push 到 `main` 與每個 pull request 時執行同�
 | 套件 | 職責 |
 | --- | --- |
 | `root` | root 指令的單一出入口（libsu） |
-| `helper` | 以 `app_process` 用 shell 身分執行的指令列 helper，負責呼叫 SoftAP 與 tethering 的隱藏 API |
+| `privilege` | 特權模式設定、Shizuku 連線，以及依模式選擇 root 或 Shizuku 的唯讀指令入口 |
+| `helper` | 以 shell 身分呼叫 SoftAP 與 tethering 隱藏 API 的 helper：root 模式以 `app_process` 執行的指令列，Shizuku 模式則是 UserService |
 | `hotspot` | 熱點資料模型、驗證，以及呼叫 helper 的控制器 |
 | `devices` | 以 MAC 位址保存的裝置暱稱與主機名稱 |
 | `routing` | 路由策略、規則腳本產生器、出口解析與前景服務 |
@@ -113,6 +138,8 @@ GitHub Actions 會在每次 push 到 `main` 與每個 pull request 時執行同�
 ### 熱點控制
 
 SoftAP 與 tethering 的隱藏 API 會檢查呼叫端的套件名稱是否屬於呼叫的 uid。root（uid 0）沒有對應套件，呼叫會被拒絕。因此 app 只用 root 來降權成 shell 使用者（uid 2000），再用 `app_process` 執行自己 APK 內的小型 helper。`com.android.shell` 擁有 `NETWORK_SETTINGS` 與 `TETHER_PRIVILEGED`，足以寫入 SoftAP 設定並啟動 tethering。
+
+Shizuku 模式改用 Shizuku 的 UserService。以 ADB 啟動的 Shizuku 本身就是 shell 身分，UserService 行程也一樣，所以直接在其中執行同一套 helper 程式碼，透過 AIDL 回傳結果；裝置監看則改用 binder callback。
 
 手機同時連著不同頻道的 Wi-Fi 時，指定的熱點頻道仍會生效（已在 Pixel 9 Pro XL 實測）。
 

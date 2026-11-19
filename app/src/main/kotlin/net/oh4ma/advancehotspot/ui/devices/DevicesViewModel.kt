@@ -22,6 +22,7 @@ import net.oh4ma.advancehotspot.intranet.buildHostEntries
 import net.oh4ma.advancehotspot.intranet.fqdnOf
 import net.oh4ma.advancehotspot.intranet.isAssignableAddress
 import net.oh4ma.advancehotspot.intranet.isValidGateway
+import net.oh4ma.advancehotspot.privilege.PrivilegeSettings
 import net.oh4ma.advancehotspot.routing.DevicePolicy
 import net.oh4ma.advancehotspot.routing.Egress
 import net.oh4ma.advancehotspot.routing.EgressResolver
@@ -64,6 +65,8 @@ data class DevicesUiState(
     val trafficEnabled: Boolean = false,
     /** 各裝置（MAC）的累計用量與即時速率。 */
     val traffic: Map<String, TrafficStats> = emptyMap(),
+    /** 路由、內網與流量需要 root；Shizuku 模式下為 false。 */
+    val rootFeatures: Boolean = true,
 )
 
 class DevicesViewModel(application: Application) : AndroidViewModel(application) {
@@ -95,6 +98,20 @@ class DevicesViewModel(application: Application) : AndroidViewModel(application)
         }
         viewModelScope.launch {
             RoutingRuntime.traffic.collect { traffic -> _state.update { it.copy(traffic = traffic) } }
+        }
+        viewModelScope.launch {
+            // 各功能的開關在 Shizuku 模式下一律讀到關閉，模式變動時重新讀取
+            PrivilegeSettings.mode.collect {
+                _state.update {
+                    it.copy(
+                        rootFeatures = PrivilegeSettings.rootFeaturesAvailable,
+                        routingEnabled = routingStore.enabled,
+                        intranetEnabled = intranetStore.enabled,
+                        trafficEnabled = trafficStore.enabled,
+                    )
+                }
+                latest?.let(::show)
+            }
         }
     }
 

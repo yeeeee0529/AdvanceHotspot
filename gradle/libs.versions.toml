@@ -7,6 +7,7 @@ material3 = "1.5.0-rc01"
 activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 libsu = "6.0.0"
+shizuku = "13.1.5"
 junit = "4.13.2"
 
 [libraries]
@@ -19,6 +20,8 @@ androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref = "libsu" }
+shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
+shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
 junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]

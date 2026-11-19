@@ -51,6 +51,8 @@ android {
 
     buildFeatures {
         compose = true
+        // Shizuku 的 UserService 透過 AIDL 與 app 溝通
+        aidl = true
     }
 }
 
@@ -63,6 +65,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.libsu.core)
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 

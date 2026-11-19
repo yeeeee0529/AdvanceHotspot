@@ -1,10 +1,19 @@
 package net.oh4ma.advancehotspot.system
 
+import net.oh4ma.advancehotspot.privilege.PrivilegeMode
+import net.oh4ma.advancehotspot.privilege.PrivilegeSettings
+import net.oh4ma.advancehotspot.privilege.PrivilegedShell
+import net.oh4ma.advancehotspot.privilege.ShizukuClient
+import net.oh4ma.advancehotspot.privilege.ShizukuState
 import net.oh4ma.advancehotspot.root.RootShell
 
-/** 裝置環境快照：root 狀態、核心資訊與後續功能會用到的網路工具。 */
+/** 裝置環境快照：特權狀態、核心資訊與後續功能會用到的網路工具。 */
 data class EnvironmentInfo(
-    val rootGranted: Boolean,
+    val mode: PrivilegeMode,
+    /** 目前模式的特權是否可用。 */
+    val privilegeReady: Boolean,
+    /** 只在 Shizuku 模式下檢查；root 模式為 null。 */
+    val shizukuState: ShizukuState?,
     val kernel: String?,
     val selinux: String?,
     val tools: List<ToolStatus>,
@@ -18,16 +27,24 @@ object EnvironmentProbe {
     private val REQUIRED_TOOLS = listOf("ip", "iptables", "ip6tables", "tc", "ndc")
 
     suspend fun probe(): EnvironmentInfo {
-        val rootGranted = RootShell.isRootGranted()
-        val kernel = RootShell.run("uname -r").stdout.firstOrNull()
-        val selinux = RootShell.run("getenforce").stdout.firstOrNull()
-        val toolLines = RootShell.run(
+        val mode = PrivilegeSettings.mode.value
+        // Shizuku 模式不碰 root，避免在沒有 root 的手機上等待授權逾時
+        val shizukuState = if (mode == PrivilegeMode.SHIZUKU) ShizukuClient.state() else null
+        val privilegeReady = when (mode) {
+            PrivilegeMode.ROOT -> RootShell.isRootGranted()
+            PrivilegeMode.SHIZUKU -> shizukuState == ShizukuState.READY
+        }
+        val kernel = PrivilegedShell.run("uname -r").stdout.firstOrNull()
+        val selinux = PrivilegedShell.run("getenforce").stdout.firstOrNull()
+        val toolLines = PrivilegedShell.run(
             REQUIRED_TOOLS.joinToString("; ") { "command -v $it >/dev/null 2>&1 && echo $it=1 || echo $it=0" },
         ).stdout
-        val interfaces = parseBriefAddressOutput(RootShell.run("ip -br addr").stdout)
+        val interfaces = parseBriefAddressOutput(PrivilegedShell.run("ip -br addr").stdout)
 
         return EnvironmentInfo(
-            rootGranted = rootGranted,
+            mode = mode,
+            privilegeReady = privilegeReady,
+            shizukuState = shizukuState,
             kernel = kernel,
             selinux = selinux,
             tools = REQUIRED_TOOLS.map { tool -> ToolStatus(tool, "$tool=1" in toolLines) },

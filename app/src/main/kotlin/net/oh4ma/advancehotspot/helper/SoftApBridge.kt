@@ -84,11 +84,11 @@ class SoftApBridge(context: Context) {
     }
 
     /**
-     * 持續監看連線裝置與熱點介面，每次變動就把完整狀態交給 [emit]；這個方法不會返回。
+     * 開始監看連線裝置與熱點介面，每次變動就把完整狀態交給 [emit]；回傳取消監看的函式。
      *
      * 讓背景服務不必反覆啟動行程輪詢。
      */
-    fun watch(emit: (JSONObject) -> Unit): Nothing {
+    fun startWatching(emit: (JSONObject) -> Unit): () -> Unit {
         val lock = Any()
         var wifiMacs = emptyList<String>()
         var tetheredClients: Collection<*> = emptyList<Any>()
@@ -122,11 +122,12 @@ class SoftApBridge(context: Context) {
             .getMethod("registerTetheringEventCallback", Executor::class.java, tetheringCallbackClass)
             .invoke(tetheringManager, directExecutor, tetheringCallback)
 
-        // 父行程關閉管線時 stdin 會讀到 EOF，藉此跟著結束，不留下孤兒行程
-        while (System.`in`.read() != -1) {
-            // 輸入內容本身沒有意義，只等待 EOF
+        return {
+            wifiManager.javaClass.getMethod("unregisterSoftApCallback", softApCallbackClass)
+                .invoke(wifiManager, softApCallback)
+            tetheringManager.javaClass.getMethod("unregisterTetheringEventCallback", tetheringCallbackClass)
+                .invoke(tetheringManager, tetheringCallback)
         }
-        kotlin.system.exitProcess(0)
     }
 
     private fun clientsJson(wifiMacs: List<String>, tetheredClients: Collection<*>, interfaces: List<String>): JSONObject {

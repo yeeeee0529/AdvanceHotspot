@@ -2,11 +2,11 @@
 
 Advanced Wi-Fi hotspot control for one rooted Pixel: route hotspot clients through a VPN, choose each device's egress with a kill switch, run a custom intranet with local DNS names, and see per-device traffic with optional rate limits.
 
-進階 Wi-Fi 熱點控制，需要 root。完整說明：[繁體中文](docs/zh-TW/README.md) · [English](docs/en/README.md)
+進階 Wi-Fi 熱點控制，需要 root；沒有 root 時可用 Shizuku 模式做基本控制。完整說明：[繁體中文](docs/zh-TW/README.md) · [English](docs/en/README.md)
 
 ## Requirements
 
-- Pixel 9 Pro XL on Android 17 (API 37), rooted with KernelSU
+- Pixel 9 Pro XL on Android 17 (API 37), rooted with KernelSU, or Shizuku started with ADB for the limited Shizuku mode
 - JDK 17 or newer, Android SDK platform 37
 
 ## Install
@@ -32,6 +32,7 @@ The package name is `net.oh4ma.advancehotspot`. After the first install, enable 
 - Custom subnet, static IP binding by MAC, `.lan` names, client isolation
 - Per-device traffic statistics and rate limits
 - Public IP and total hotspot speed on the Hotspot tab
+- Shizuku mode without root: hotspot settings, on/off and device management only
 
 ## Status
 

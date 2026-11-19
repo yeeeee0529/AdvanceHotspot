@@ -1,17 +1,31 @@
 package net.oh4ma.advancehotspot.hotspot
 
+import android.os.IBinder
 import android.util.Base64
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import net.oh4ma.advancehotspot.helper.HelperMain
+import net.oh4ma.advancehotspot.helper.IClientWatcher
+import net.oh4ma.advancehotspot.privilege.PrivilegeMode
+import net.oh4ma.advancehotspot.privilege.PrivilegeSettings
+import net.oh4ma.advancehotspot.privilege.ShizukuClient
+import net.oh4ma.advancehotspot.privilege.ShizukuException
 import net.oh4ma.advancehotspot.root.RootShell
 import net.oh4ma.advancehotspot.routing.Downstream
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class HotspotException(message: String) : Exception(message)
 
 /**
- * 熱點控制的 app 端入口：經由 root shell 降權為 shell 身分執行 [HelperMain]，並解析其 JSON 回應。
+ * 熱點控制的 app 端入口，解析 helper 的 JSON 回應。
+ *
+ * root 模式經由 root shell 降權為 shell 身分執行 [HelperMain]；Shizuku 模式呼叫常駐在 Shizuku 端的
+ * [net.oh4ma.advancehotspot.helper.HelperUserService]，兩者共用同一套指令與回應格式。
  *
  * @param apkPath 本 app 的 APK 路徑，作為 `app_process` 的 classpath。
  */
@@ -78,18 +92,57 @@ class HotspotController(private val apkPath: String) {
         return latest
     }
 
+    /**
+     * Shizuku 模式的裝置監看：註冊後持續把狀態交給 [onEvent]，直到 helper 斷線或協程被取消才返回。
+     */
+    suspend fun watchViaShizuku(onEvent: (ClientSnapshot) -> Unit) {
+        val helper = ShizukuClient.service()
+        val watcher = object : IClientWatcher.Stub() {
+            override fun onEvent(json: String) {
+                runCatching { parseClientSnapshot(JSONObject(json)) }.getOrNull()?.let(onEvent)
+            }
+        }
+        suspendCancellableCoroutine { continuation ->
+            val death = IBinder.DeathRecipient { if (continuation.isActive) continuation.resume(Unit) }
+            val binder = helper.asBinder()
+            try {
+                binder.linkToDeath(death, 0)
+                helper.watch(watcher)
+            } catch (exception: Exception) {
+                continuation.resumeWithException(exception)
+                return@suspendCancellableCoroutine
+            }
+            continuation.invokeOnCancellation {
+                runCatching { binder.unlinkToDeath(death, 0) }
+                runCatching { helper.stopWatching() }
+            }
+        }
+    }
+
     private suspend fun invoke(vararg args: String): JSONObject {
+        val response = when (PrivilegeSettings.mode.value) {
+            PrivilegeMode.ROOT -> invokeViaRoot(args)
+            PrivilegeMode.SHIZUKU -> try {
+                val helper = ShizukuClient.service()
+                JSONObject(withContext(Dispatchers.IO) { helper.execute(arrayOf(*args)) })
+            } catch (exception: ShizukuException) {
+                throw HotspotException(exception.message ?: exception.toString())
+            }
+        }
+        if (!response.optBoolean("ok")) {
+            throw HotspotException(response.optString("error", "Unknown helper error"))
+        }
+        return response
+    }
+
+    private suspend fun invokeViaRoot(args: Array<out String>): JSONObject {
         val result = RootShell.run(helperCommand(*args))
         val line = result.stdout.lastOrNull { it.startsWith(HelperMain.RESPONSE_PREFIX) }
             ?: throw HotspotException(
                 "Helper produced no response (exit ${result.exitCode}): " +
                     result.stderr.takeLast(3).joinToString(" | "),
             )
-        val response = JSONObject(line.removePrefix(HelperMain.RESPONSE_PREFIX))
-        if (!response.optBoolean("ok")) {
-            throw HotspotException(response.optString("error", "Unknown helper error"))
-        }
-        return response
+        return JSONObject(line.removePrefix(HelperMain.RESPONSE_PREFIX))
     }
 
     /** 參數只會是固定指令或 URL-safe base64，放進單引號內不需要再跳脫。 */
