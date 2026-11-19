@@ -6,7 +6,7 @@ Last updated: 2026-11-19
 
 ## Current state
 
-All six planned phases are implemented and committed on the local `main` branch. A private GitHub remote `origin` (`yeeeee0529/AdvanceHotspot`) was created on 2026-11-19 at the owner's request and `main` was pushed the same day. Ask before pushing further changes unless the owner says otherwise.
+All six planned phases are implemented and committed on the local `main` branch. A private GitHub remote `origin` (`yeeeee0529/AdvanceHotspot`) was created on 2026-11-19 at the owner's request and `main` was pushed the same day. Ask before pushing further changes unless the owner says otherwise. On 2026-11-19 the owner made the repository public, the package was renamed to `net.oh4ma.advancehotspot`, and GitHub Actions CI and tag releases were added (see Releases and CI).
 
 | Phase | Scope | State |
 | --- | --- | --- |
@@ -43,9 +43,17 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Lint results are easiest to read from `app/build/reports/lint-results-debug.sarif`.
 
+## Releases and CI
+
+- `.github/workflows/ci.yml` runs the check command above on pushes to `main` and on pull requests and uploads the debug APK.
+- `.github/workflows/release.yml` runs on `v*` tags: `assembleRelease` with `-PversionName=<tag without v>` and `-PversionCode=<run number>`, then `gh release create` with the APK attached.
+- Signing reads `RELEASE_KEYSTORE_PATH`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD` from the environment (`app/build.gradle.kts`); without them the release build is unsigned. The repository secrets hold the keystore as base64 plus the three values.
+- The keystore and its password live only on the owner's Mac under `~/.android/` (`advancehotspot-release.jks` and a 600-mode text file next to it). Never print or commit them. Losing them means releases can no longer update an installed release build.
+- Debug and release builds share the package name but not the signing key, so one cannot be installed over the other; uninstall first, which drops the root grant and settings.
+
 ## Architecture
 
-| Package (under `app/src/main/kotlin/me/yeeeee/advancehotspot`) | Role |
+| Package (under `app/src/main/kotlin/net/oh4ma/advancehotspot`) | Role |
 | --- | --- |
 | `root` | `RootShell`, the single entry point for root commands through libsu |
 | `helper` | `HelperMain` and `SoftApBridge`: a command-line helper run with `app_process` as the shell user |
@@ -70,7 +78,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 
 - **Stable Compose Material 3 1.4.0 lacks the M3 Expressive components.** Only `ShortNavigationBar` and `MotionScheme` are there. `MaterialExpressiveTheme`, `ButtonGroup`, `ToggleButton`, `LoadingIndicator`, `FloatingToolbar`, `MaterialShapes`, the flexible top app bars and `SegmentedListItem` need 1.5.0 (pinned to `1.5.0-rc01`). The source jar on Google Maven (`material3-android-1.5.0-rc01-sources.jar`) is the quickest reference for their signatures.
 - **A toggleable `SegmentedListItem` paints its whole row in the selected container color when checked.** `SwitchItem` overrides the selected colors with the normal ones so a switch row does not look selected.
-- **Reinstalling the app as a fresh install drops its KernelSU root grant and all stored settings.** The helper then fails with `su: inaccessible or not found` (exit 127). Check `dumpsys package me.yeeeee.advancehotspot | grep firstInstallTime` before assuming a code regression.
+- **Reinstalling the app as a fresh install drops its KernelSU root grant and all stored settings.** The helper then fails with `su: inaccessible or not found` (exit 127). Check `dumpsys package net.oh4ma.advancehotspot | grep firstInstallTime` before assuming a code regression.
 
 - **FlClash's dock widget is not in the FlClash repository.** `NavigationDock`, `LiquidGlass` and the 22 KB `liquid_glass.frag` live in the `chen08209/prism_ui` submodule (`lib/navigation_dock.dart`, `lib/liquid_glass.dart`, `shaders/liquid_glass.frag`). FlClash's glass is an optional setting; the owner's phone shows the non-glass dock.
 - **A Compose backdrop for glass works by drawing one `GraphicsLayer` in two places.** Record the content in `drawWithContent` (`layer.record { drawContent() }`, then `drawLayer(layer)`), and in the dock draw the same layer translated by `-positionInRoot` inside another layer whose `renderEffect` is the shader. Content changes reach the dock without re-recording it. `dumpsys gfxinfo` shows 0 frames while idle, so it does not redraw in a loop.
@@ -95,7 +103,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - **`RoutingService` used to start only when the Devices or Network tab was opened.** After `adb install -r` or a process kill it stayed down until then, so the hosts file and rules were not refreshed. `MainActivity.onCreate` now calls `RoutingRuntime.sync`. It is not in `App.onCreate` on purpose: a process started in the background may not start a foreground service.
 - **Android requires a notification for a foreground service, so the only way to clear the routing notification is to stop the service.** Before 2026-11-18 it ran whenever routing, intranet or traffic was enabled, even with the hotspot off. Keeping it in the background without a notification would need the app on the device-idle allowlist (a system setting change), and restarting it when the hotspot comes back would need a root-side watcher that calls `am start-foreground-service`. The owner chose neither; see Architecture.
 - **toybox `nc -u -w` never exits when the peer stays silent or after the reply.** Use `timeout 5 nc -u -q 2 <ip> 53 < query.bin`. A raw DNS query through it is a workable resolver test, since the phone has no `nslookup`.
-- **Without root, `run-as me.yeeeee.advancehotspot` can still read `files/intranet/` (leases, hosts) and `shared_prefs`,** because the build is debuggable and the root-written files are world-readable. `dumpsys wifi` and `ip neigh` also work as the shell user.
+- **Without root, `run-as net.oh4ma.advancehotspot` can still read `files/intranet/` (leases, hosts) and `shared_prefs`,** because the build is debuggable and the root-written files are world-readable. `dumpsys wifi` and `ip neigh` also work as the shell user.
 - **A blocked-then-unblocked client does not always redo DHCP.** It often keeps its lease. To force a fresh DHCP exchange, ask the owner to toggle Wi-Fi on the client.
 
 ## Verification status
@@ -170,6 +178,13 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-19 (public repository, package rename, CI and releases)
+
+- Owner requests: make the repository public; add a GitHub workflow; publish release APKs; rename the package.
+- Owner decisions: publish as is, although `IntranetTest.kt` holds what looks like a real device's MAC address and hostname in its lease fixture (in history since `20701ab`); package name all lower case, `net.oh4ma.advancehotspot`, for `applicationId`, `namespace` and Kotlin packages; the agent generates a new release key and stores it as repository secrets.
+- Change: sources moved to `net/oh4ma/advancehotspot`; signing config and tag-driven version in `app/build.gradle.kts`; CI and release workflows; READMEs gained install-from-release and a CI/release paragraph. See Releases and CI.
+- Checks: `assembleDebug`, `lintDebug` (same 2 accepted warnings), 29 unit tests, and a locally signed `assembleRelease` (apksigner verified, package `net.oh4ma.advancehotspot`). CI and release results are in the entry below this one if the run finished. **Not run on the phone**: no device was connected. The renamed package is a new app there: it needs a fresh KernelSU grant, starts with no settings, and the old `me.yeeeee.advancehotspot` app is still installed and should be removed by the owner.
 
 ### 2026-11-19 (README rewrite)
 

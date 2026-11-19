@@ -10,7 +10,9 @@ AdvanceHotspot 是一個 Android app，在已 root 的手機上擴充系統 Wi-F
 - 透過 KernelSU 取得 root
 - 建置需要 JDK 17 以上與 Android SDK platform 37
 
-## 建置與安裝
+## 安裝
+
+每個 [release](https://github.com/yeeeee0529/AdvanceHotspot/releases) 都附有已簽章的 APK。要自行建置 debug 版本：
 
 ```bash
 ./gradlew :app:assembleDebug
@@ -20,7 +22,7 @@ AdvanceHotspot 是一個 Android app，在已 root 的手機上擴充系統 Wi-F
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-KernelSU 不會跳出授權提示。請開啟 KernelSU 管理器，替 AdvanceHotspot 開啟超級使用者權限，再回到 app 按「重新整理」。
+套件名稱是 `net.oh4ma.advancehotspot`。KernelSU 不會跳出授權提示。請開啟 KernelSU 管理器，替 AdvanceHotspot 開啟超級使用者權限，再回到 app 按「重新整理」。
 
 ## 功能
 
@@ -86,7 +88,11 @@ KernelSU 不會跳出授權提示。請開啟 KernelSU 管理器，替 AdvanceHo
 ./gradlew :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
 ```
 
-原始碼位於 `app/src/main/kotlin/me/yeeeee/advancehotspot/`：
+GitHub Actions 會在每次 push 到 `main` 與每個 pull request 時執行同一組指令（`.github/workflows/ci.yml`），並保留 debug APK 作為 artifact。
+
+要發布新版本，push 一個 tag，例如 `v0.2.0`。`.github/workflows/release.yml` 會以 tag 作為 `versionName` 建置已簽章的 release APK，並附加到 GitHub release。簽章金鑰從儲存庫 secrets `RELEASE_KEYSTORE_BASE64`、`RELEASE_KEYSTORE_PASSWORD`、`RELEASE_KEY_ALIAS`、`RELEASE_KEY_PASSWORD` 讀取。在本機執行 `assembleRelease` 時若沒有對應的 `RELEASE_*` 環境變數，產出的 APK 不會簽章。
+
+原始碼位於 `app/src/main/kotlin/net/oh4ma/advancehotspot/`：
 
 | 套件 | 職責 |
 | --- | --- |

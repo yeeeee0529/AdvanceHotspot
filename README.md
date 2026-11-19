@@ -9,7 +9,9 @@ Advanced Wi-Fi hotspot control for one rooted Pixel: route hotspot clients throu
 - Pixel 9 Pro XL on Android 17 (API 37), rooted with KernelSU
 - JDK 17 or newer, Android SDK platform 37
 
-## Build and install
+## Install
+
+Download the signed APK from [Releases](https://github.com/yeeeee0529/AdvanceHotspot/releases) and install it, or build it yourself:
 
 ```bash
 ./gradlew :app:assembleDebug
@@ -19,7 +21,7 @@ Advanced Wi-Fi hotspot control for one rooted Pixel: route hotspot clients throu
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-After the first install, enable superuser for AdvanceHotspot in the KernelSU manager, then tap Refresh in the app.
+The package name is `net.oh4ma.advancehotspot`. After the first install, enable superuser for AdvanceHotspot in the KernelSU manager, then tap Refresh in the app.
 
 ## Features
 

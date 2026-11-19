@@ -10,7 +10,9 @@ AdvanceHotspot is an Android app that extends the system Wi-Fi hotspot on a root
 - Root through KernelSU
 - To build: JDK 17 or newer and Android SDK platform 37
 
-## Build and install
+## Install
+
+Signed APKs are attached to each [release](https://github.com/yeeeee0529/AdvanceHotspot/releases). To build a debug APK yourself:
 
 ```bash
 ./gradlew :app:assembleDebug
@@ -20,7 +22,7 @@ AdvanceHotspot is an Android app that extends the system Wi-Fi hotspot on a root
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-KernelSU does not prompt for root. Open the KernelSU manager, enable superuser for AdvanceHotspot, then tap Refresh (重新整理) in the app.
+The package name is `net.oh4ma.advancehotspot`. KernelSU does not prompt for root. Open the KernelSU manager, enable superuser for AdvanceHotspot, then tap Refresh (重新整理) in the app.
 
 ## Features
 
@@ -88,7 +90,11 @@ The public IP comes from public lookup services, tried in order: ident.me, ipwho
 ./gradlew :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
 ```
 
-Sources live under `app/src/main/kotlin/me/yeeeee/advancehotspot/`:
+GitHub Actions runs the same command on every push to `main` and on pull requests (`.github/workflows/ci.yml`) and keeps the debug APK as an artifact.
+
+To publish a release, push a tag such as `v0.2.0`. `.github/workflows/release.yml` builds a signed release APK with `versionName` taken from the tag and attaches it to a GitHub release. The signing key is read from the repository secrets `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD`. A local `assembleRelease` without the matching `RELEASE_*` environment variables produces an unsigned APK.
+
+Sources live under `app/src/main/kotlin/net/oh4ma/advancehotspot/`:
 
 | Package | Role |
 | --- | --- |

@@ -4,21 +4,38 @@ plugins {
 }
 
 android {
-    namespace = "me.yeeeee.advancehotspot"
+    namespace = "net.oh4ma.advancehotspot"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "me.yeeeee.advancehotspot"
+        applicationId = "net.oh4ma.advancehotspot"
         // 目前只針對 Android 17 的 Pixel，隱藏 API 只需適配單一版本
         minSdk = 37
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // 發布 workflow 以 -PversionCode / -PversionName 從 tag 帶入版本
+        versionCode = providers.gradleProperty("versionCode").orNull?.toInt() ?: 1
+        versionName = providers.gradleProperty("versionName").orNull ?: "0.1.0"
+    }
+
+    // 簽章金鑰只從環境變數讀取，不進儲存庫；沒有設定時 release 版本不簽章
+    val releaseKeystore = providers.environmentVariable("RELEASE_KEYSTORE_PATH").orNull
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = providers.environmentVariable("RELEASE_KEYSTORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("RELEASE_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("RELEASE_KEY_PASSWORD").get()
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseKeystore != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
