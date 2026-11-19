@@ -162,6 +162,12 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 
 Newest entry first. Add one entry per working session.
 
+### 2026-11-19 (kick cooldown three minutes)
+
+- Owner decision: the temporary disconnect cooldown is three minutes. `DevicesViewModel.disconnect` now blocks the device, returns at once (no busy state during the wait), and a `GlobalScope` coroutine removes only that MAC from the live blocklist after `KICK_HOLD_MS` (3 min). It no longer restores a saved copy of the old list, so blocks the owner changes meanwhile survive.
+- Known limit: if the process is killed during the three minutes, the device stays blocked until unblocked by hand. A persisted deadline would fix that; not done.
+- Checks: build, lint, unit tests pass. Not verified on the phone.
+
 ### 2026-11-19 (device sort and automatic hotspot refresh)
 
 - Owner request: sort devices by total network usage; make the Hotspot tab refresh automatic.
