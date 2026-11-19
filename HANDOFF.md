@@ -113,8 +113,8 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 | M3 Expressive UI: Hotspot (hotspot off), Network, Environment, empty Devices list, dark theme | Verified on device by screenshot |
 | M3 Expressive UI: floating save toolbar, device rows and device sheet, light theme | Not verified on device |
 | Routing service stops with the hotspot (2026-11-18) | Verified on device: app open with hotspot off starts no service; in-app start brings the service and notification up; force-stop and reopen with the hotspot on restarts it through the sticky broadcast; in-app stop removes service and notification and leaves no dnsmasq or watcher process. Turning off from Quick Settings not tested |
-| Persistent notification with egress and stop button (2026-11-19) | Built only; not run on the phone |
-| Device sorting by usage and Hotspot auto refresh (2026-11-19) | Built only; not run on the phone |
+| Persistent notification with egress and stop button (2026-11-19) | Verified on device: after turning the hotspot on in the app, the notification reads 熱點已開啟 / 目前出口 tun0 (VPN active) and carries one action. The stop button itself was not pressed (a client was connected) |
+| Device sorting by usage and Hotspot auto refresh (2026-11-19) | Hotspot tab on device: the refresh button is gone and the status updated to on without a manual refresh. Device sorting not checked |
 | Temporary disconnect button (2026-11-19) | Built only; not run on the phone |
 | Max-clients hint without a number (2026-11-17) | Built and installed; not seen on screen. `uiautomator dump` fails with `could not get idle state` while the app is in front |
 
@@ -135,6 +135,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 - `adb shell` has root again; the owner re-granted it on 2026-11-17 after it had gone missing earlier that day.
 - The app was updated in place twice on 2026-11-17 (fallback names, service start). Clients stayed connected and both dnsmasq processes kept their pids.
 - Probe files pushed to `/data/local/tmp` on 2026-11-17 were removed. Firmware `maxassoc` is at its original value of 10.
+- 2026-11-19: hotspot left on with one connected client; latest build installed.
 - 2026-11-18: the hotspot was found off. For the notification test the agent turned it on and off again in the app with the owner's consent; it is left off. `adb shell` has no root again (`su: inaccessible or not found`); the app's own root grant still works.
 - Dark mode is on (`cmd uimode night yes`). Auto-rotate is on; its earlier value is unknown.
 
@@ -161,6 +162,11 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-19 (on-device test, partial)
+
+- Installed the latest build in place (root grant kept). Found the hotspot off, turned it on in the app; one client joined. Left on. Not tested because it would disturb a connected client: the notification's stop button, the disconnect button, device sorting. Ask the owner which client is theirs first.
+- Note: driving the phone with `adb shell input tap` worked for the in-app toggle (first tap right after install was lost while the app was still loading).
 
 ### 2026-11-19 (kick cooldown three minutes)
 
