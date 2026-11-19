@@ -171,6 +171,10 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 
 Newest entry first. Add one entry per working session.
 
+### 2026-11-19 (push)
+
+- Owner request: pushed `main` to `origin` up to `f5d0c92` (FlClash-style dock, liquid glass, IP and speed cards). This note is committed after the push and is not pushed yet.
+
 ### 2026-11-19 (liquid glass dock, IP and speed on Hotspot tab)
 
 - Owner requests: add FlClash's liquid glass, jelly stretch and hover to the dock; haptic ticks while sliding; move the network speed to the Hotspot tab; add FlClash-like IP detection showing only IP, organization and country.
