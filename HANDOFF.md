@@ -6,7 +6,7 @@ Last updated: 2026-11-19
 
 ## Current state
 
-All six planned phases are implemented and committed on the local `main` branch. There is no git remote and nothing has been pushed; the owner declined a push for now, so do not push or create a remote unless asked.
+All six planned phases are implemented and committed on the local `main` branch. A private GitHub remote `origin` (`yeeeee0529/AdvanceHotspot`) was created on 2026-11-19 at the owner's request, but nothing has been pushed yet; do not push unless asked.
 
 | Phase | Scope | State |
 | --- | --- | --- |
@@ -160,6 +160,10 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-19 (private remote)
+
+- Owner request: create a private remote with `gh`. Created `yeeeee0529/AdvanceHotspot` (private) and added it as `origin`. Nothing pushed; the owner has not asked for a push yet.
 
 ### 2026-11-19 (temporary disconnect button)
 
