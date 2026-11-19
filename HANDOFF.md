@@ -163,6 +163,10 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 
 Newest entry first. Add one entry per working session.
 
+### 2026-11-19 (app name)
+
+- Owner request: the app name is now "Advance Hotspot" (`app_name` in `strings.xml`; launcher label and nothing else). Build, lint and tests pass.
+
 ### 2026-11-19 (on-device test, partial)
 
 - Installed the latest build in place (root grant kept). Found the hotspot off, turned it on in the app; one client joined. Left on. Not tested because it would disturb a connected client: the notification's stop button, the disconnect button, device sorting. Ask the owner which client is theirs first.
