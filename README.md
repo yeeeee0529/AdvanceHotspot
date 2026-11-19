@@ -1,8 +1,8 @@
 # AdvanceHotspot
 
-Advanced Wi-Fi hotspot control for rooted Android: route hotspot clients through a VPN, pick band and channel, cap client count, and control each connected device's internet access and egress interface.
+Advanced Wi-Fi hotspot control for one rooted Pixel: route hotspot clients through a VPN, choose each device's egress with a kill switch, run a custom intranet with local DNS names, and see per-device traffic with optional rate limits.
 
-進階 Wi-Fi 熱點控制（需要 root）。完整說明：[繁體中文](docs/zh-TW/README.md) · [English](docs/en/README.md)
+進階 Wi-Fi 熱點控制，需要 root。完整說明：[繁體中文](docs/zh-TW/README.md) · [English](docs/en/README.md)
 
 ## Requirements
 
@@ -19,16 +19,18 @@ Advanced Wi-Fi hotspot control for rooted Android: route hotspot clients through
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Grant the app root in the KernelSU manager after the first install.
+After the first install, enable superuser for AdvanceHotspot in the KernelSU manager, then tap Refresh in the app.
+
+## Features
+
+- Hotspot settings: band, channel, maximum client count, hidden SSID, security type
+- Hotspot traffic through any VPN app already running on the phone
+- Connected device list with nicknames, blocking and temporary disconnect
+- Per-device internet switch and egress (Wi-Fi, mobile data, VPN, Ethernet), kill switch, IPv6 leak protection
+- Custom subnet, static IP binding by MAC, `.lan` names, client isolation
+- Per-device traffic statistics and rate limits
+- Public IP and total hotspot speed on the Hotspot tab
 
 ## Status
 
-| Phase | Scope | State |
-| --- | --- | --- |
-| 1 | Project skeleton, root check, environment screen | Done |
-| 2 | Hotspot configuration (band, channel, max clients) and on/off | Done |
-| 3 | Connected device list, nicknames, MAC blocking | Done |
-| 4 | Per-device routing, kill switch, IPv6 leak protection | Done |
-| 5 | Intranet: custom subnet, static leases, local DNS, isolation | Done |
-| 6 | Per-device rate limit and traffic statistics | Done |
-| UI | Material 3 Expressive redesign with four tabs (Hotspot, Devices, Network, Environment) | Done |
+All planned features are implemented. Only the Pixel 9 Pro XL on Android 17 is supported. Known limits, such as IPv4-only rate limits and unhandled 464XLAT, are listed in the full READMEs.
