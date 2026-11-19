@@ -3,6 +3,7 @@ package me.yeeeee.advancehotspot.routing
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -39,6 +40,8 @@ import me.yeeeee.advancehotspot.intranet.intranetTeardownScript
 import me.yeeeee.advancehotspot.intranet.isAssignableAddress
 import me.yeeeee.advancehotspot.intranet.subnetOf
 import me.yeeeee.advancehotspot.intranet.toScript
+import me.yeeeee.advancehotspot.MainActivity
+import me.yeeeee.advancehotspot.hotspot.ApState
 import me.yeeeee.advancehotspot.hotspot.ClientSnapshot
 import me.yeeeee.advancehotspot.hotspot.HotspotController
 import me.yeeeee.advancehotspot.root.CommandResult
@@ -86,7 +89,8 @@ object RoutingRuntime {
     }
 
     /**
-     * 依目前的設定與熱點狀態啟動或停止服務：熱點開啟中，且路由控制、自訂內網、流量任一項啟用時才需要它。
+     * 依熱點狀態啟動或停止服務：熱點開啟中就常駐，讓通知顯示目前出口並提供關閉按鈕；
+     * 路由控制、自訂內網、流量都未啟用時，服務只負責通知。
      *
      * 熱點關閉時停止服務，前景通知才會消失。服務停止後不會自行偵測熱點再次開啟，
      * 因此只有在 app 內開啟熱點，或之後開啟 app 時，服務才會回來。
@@ -95,9 +99,7 @@ object RoutingRuntime {
      */
     fun sync(context: Context, hotspotOn: Boolean = isTethering(context)) {
         val intent = Intent(context, RoutingService::class.java)
-        val featureEnabled =
-            RoutingStore(context).enabled || IntranetStore(context).enabled || TrafficStore(context).enabled
-        if (hotspotOn && featureEnabled) {
+        if (hotspotOn) {
             context.startForegroundService(intent)
             requestApply()
         } else {
@@ -146,6 +148,9 @@ class RoutingService : Service() {
 
     private var trafficApplied = false
 
+    /** 通知上顯示的目前出口。 */
+    private var egressLabel: String = ""
+
     /** 目前計數規則涵蓋的 IP 與其對應的 MAC。 */
     private var trafficIps: Map<String, String> = emptyMap()
     private var lastCounters: Map<String, Counter> = emptyMap()
@@ -175,6 +180,7 @@ class RoutingService : Service() {
         controller = HotspotController(applicationInfo.sourceDir)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
 
+        egressLabel = currentEgressLabel(null)
         startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         RoutingRuntime.status.value = RoutingStatus(running = true)
 
@@ -204,7 +210,21 @@ class RoutingService : Service() {
         }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP_HOTSPOT) stopHotspot()
+        return START_STICKY
+    }
+
+    /** 通知上的按鈕：關閉熱點，確認關閉後結束服務並清除通知。 */
+    private fun stopHotspot() {
+        scope.launch {
+            runCatching {
+                controller.stop()
+                controller.awaitApState(ApState.DISABLED)
+            }
+            RoutingRuntime.sync(this@RoutingService, hotspotOn = false)
+        }
+    }
 
     override fun onDestroy() {
         connectivityManager.unregisterNetworkCallback(networkCallback)
@@ -301,6 +321,7 @@ class RoutingService : Service() {
             applyRouting(null, emptyList())
             applyTraffic(null, emptyList())
             RoutingRuntime.status.value = RoutingStatus(running = true)
+            refreshNotification(null)
             return
         }
 
@@ -321,6 +342,29 @@ class RoutingService : Service() {
             downstream = downstream,
             error = errors.firstOrNull(),
         )
+        refreshNotification(downstream)
+    }
+
+    private fun refreshNotification(downstream: Downstream?) {
+        val label = currentEgressLabel(downstream)
+        if (label == egressLabel) return
+        egressLabel = label
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
+    }
+
+    /**
+     * 熱點流量目前實際走的網卡：路由控制啟用且預設出口綁定網路類型時取該出口，
+     * 否則取手機目前預設網路的網卡。
+     */
+    private fun currentEgressLabel(downstream: Downstream?): String {
+        val default = store.defaultEgress
+        val iface = if (store.enabled && default != Egress.SYSTEM && default != Egress.INHERIT) {
+            resolver.resolve(downstream?.iface)[default]?.iface
+        } else {
+            connectivityManager.activeNetwork
+                ?.let(connectivityManager::getLinkProperties)?.interfaceName
+        }
+        return iface ?: getString(R.string.hotspot_notification_no_egress)
     }
 
     /** 套用或移除每裝置路由規則，回傳錯誤訊息；成功時回傳 null。 */
@@ -471,10 +515,26 @@ class RoutingService : Service() {
                 NotificationManager.IMPORTANCE_LOW,
             ),
         )
+        val openApp = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val stop = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, RoutingService::class.java).setAction(ACTION_STOP_HOTSPOT),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         return Notification.Builder(this, NOTIFICATION_CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(getString(R.string.routing_notification_title))
-            .setContentText(getString(R.string.routing_notification_text))
+            .setContentTitle(getString(R.string.hotspot_notification_title))
+            .setContentText(getString(R.string.hotspot_notification_egress, egressLabel))
+            .setContentIntent(openApp)
+            .addAction(
+                Notification.Action.Builder(null, getString(R.string.hotspot_notification_stop), stop).build(),
+            )
             .setOngoing(true)
             .build()
     }
@@ -482,6 +542,7 @@ class RoutingService : Service() {
     private companion object {
         const val NOTIFICATION_ID = 1
         const val NOTIFICATION_CHANNEL = "routing"
+        const val ACTION_STOP_HOTSPOT = "me.yeeeee.advancehotspot.action.STOP_HOTSPOT"
         const val DEBOUNCE_MS = 300L
         const val WATCH_RESTART_DELAY_MS = 3000L
         const val LEASE_POLL_INTERVAL_MS = 4000L

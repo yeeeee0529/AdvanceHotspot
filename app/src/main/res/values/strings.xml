@@ -83,9 +83,11 @@
     <string name="rename_label">暱稱</string>
     <string name="rename_hint">留空會改回顯示裝置自己回報的名稱。</string>
 
-    <string name="routing_notification_channel">路由控制</string>
-    <string name="routing_notification_title">每裝置路由控制執行中</string>
-    <string name="routing_notification_text">正在依設定管理熱點裝置的聯網與出口。</string>
+    <string name="routing_notification_channel">熱點狀態</string>
+    <string name="hotspot_notification_title">熱點已開啟</string>
+    <string name="hotspot_notification_egress">目前出口 %1$s</string>
+    <string name="hotspot_notification_no_egress">無</string>
+    <string name="hotspot_notification_stop">關閉熱點</string>
     <string name="routing_title">每裝置路由控制</string>
     <string name="routing_description">啟用後可個別設定裝置能否上網與從哪個網路出去。指定出口斷線時，該裝置會直接斷網，不會改走其他網路。</string>
     <string name="routing_default_egress">預設出口</string>

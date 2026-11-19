@@ -2,7 +2,7 @@
 
 This file is the single place where agents hand work over to each other. Read it before doing anything else, and update it before you stop. The rules for maintaining it are in [AGENTS.md](AGENTS.md).
 
-Last updated: 2026-11-18
+Last updated: 2026-11-19
 
 ## Current state
 
@@ -113,6 +113,7 @@ Read these before changing the helper, the DHCP path, or the firewall rules.
 | M3 Expressive UI: Hotspot (hotspot off), Network, Environment, empty Devices list, dark theme | Verified on device by screenshot |
 | M3 Expressive UI: floating save toolbar, device rows and device sheet, light theme | Not verified on device |
 | Routing service stops with the hotspot (2026-11-18) | Verified on device: app open with hotspot off starts no service; in-app start brings the service and notification up; force-stop and reopen with the hotspot on restarts it through the sticky broadcast; in-app stop removes service and notification and leaves no dnsmasq or watcher process. Turning off from Quick Settings not tested |
+| Persistent notification with egress and stop button (2026-11-19) | Built only; not run on the phone |
 | Max-clients hint without a number (2026-11-17) | Built and installed; not seen on screen. `uiautomator dump` fails with `could not get idle state` while the app is in front |
 
 ## Known limits
@@ -158,6 +159,12 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-19 (persistent hotspot notification)
+
+- Owner request: the persistent notification should read "熱點已開啟", the current egress interface, and a "關閉熱點" button.
+- Change: `RoutingRuntime.sync` now runs the service whenever the hotspot is on (no feature needed), since the service owns the notification. The notification shows the default egress interface when routing binds one, else the phone's active network interface, refreshed on each apply; the action stops the hotspot through the helper, then syncs the service off. Channel name is now 熱點狀態. READMEs (zh-TW, en) updated.
+- Checks: `assembleDebug`, `lintDebug`, `testDebugUnitTest` pass. **Not verified on the phone**: notification text, egress refresh, and the stop button (the hotspot is shared with other people's devices; ask the owner before toggling it).
 
 ### 2026-11-18 (routing notification after hotspot off)
 
