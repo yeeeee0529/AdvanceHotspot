@@ -177,6 +177,8 @@ Earlier areas:
 
 ## State left on the test phone
 
+- 2026-11-20 (v0.2.2 install): at the owner's request the debug build was uninstalled and the signed release `v0.2.2` (versionCode 5) installed from the GitHub release, so the app's earlier root grant and settings were dropped. Debug builds can no longer be installed over it without uninstalling again. Right after install the owner granted KernelSU superuser to the app and started using it (the agent saw the Root hero, the Network tab with routing control on and the notification permission dialog); what the owner configured afterwards is unknown. `adb shell` is uid 2000 (no root) at this point.
+
 - 2026-11-19 (Shizuku session): `net.oh4ma.advancehotspot` debug build installed for the first time. The owner then granted KernelSU superuser to it and to Shell (`com.android.shell`), so `adb shell` is root. The app is left in Root mode with routing, intranet and traffic off; it also holds a Shizuku permission. Shizuku was restarted several times and now runs as uid 2000 in the `ksu` domain (started with `su 2000`); it returns to root if the owner restarts it with root or the phone reboots with start-on-boot. Shizuku had 0 authorized apps before. The hotspot was turned on and off with the owner's consent and is left off, as found; while it was on, up to 9 remembered clients joined without the old app's rules. The old `me.yeeeee.advancehotspot` app was not touched; the two apps share iptables chain names and the `HelperMain watch` pkill pattern, so either app's teardown removes the other's rules.
 
 - As found on 2026-11-16 (DHCP fix session), set by the owner and left unchanged: hotspot on with several clients, intranet on with a custom gateway, routing on, traffic on, and a VPN active on the phone. The routing chain currently drops all forwarding for every client; this is the owner's policy state, not something an agent set.
@@ -211,6 +213,10 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 5. Replace the 4-second polling in the Devices screen with the service's watcher events.
 
 ## Handoff log
+
+### 2026-11-20 (v0.2.2 install)
+
+- Owner request: install v0.2.2 on the phone. The owner chose to uninstall the debug build and install the release APK, accepting the loss of the root grant and settings. Installed and launched; the Environment tab showed no refresh button and the root hint read 下拉重新整理. A pull gesture was attempted with `input motionevent` but the owner was using the phone at the same time (granting root in KernelSU), so the mid-gesture screenshot showed the KernelSU screen; the pull-to-refresh gesture and indicator remain unverified. The agent stopped sending input once it saw the owner was active.
 
 ### 2026-11-20 (v0.2.2 release)
 
