@@ -212,6 +212,10 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 
 ## Handoff log
 
+### 2026-11-20 (v0.2.2 release)
+
+- Release: at the owner's request the Release workflow published `v0.2.2` (annotated tag on `8dd1970`, the pull-to-refresh commit) with the signed `AdvanceHotspot-v0.2.2.apk` attached. CI on `8dd1970` also passed. The version was not installed on the phone (none connected).
+
 ### 2026-11-20 (Environment pull-to-refresh)
 
 At the owner's request the Environment tab's refresh button became pull-to-refresh. `ScreenScaffold` gained optional `refreshing` and `onRefresh`; when `onRefresh` is set it applies `Modifier.pullToRefresh` outside the top bar's nested-scroll connection, so a downward drag first expands the collapsed top bar and only then pulls, and it draws the M3 Expressive `PullToRefreshDefaults.LoadingIndicator` just below the top bar. The indicator is hidden during the first load, where `LoadingBox` already shows. The root and Shizuku hints and the install step in the three READMEs now say to pull down. Other tabs are unchanged; the Hotspot tab still has its own refresh button. Build, lint and unit tests pass; not checked on a phone because none was connected. Lint now also lists 4 `GradleDependency` warnings for newer Gradle, Compose BOM, material3 1.5.0 and lifecycle releases; nothing was upgraded.
