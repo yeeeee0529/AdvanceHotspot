@@ -4,7 +4,7 @@
     <string name="root_title">Root access</string>
     <string name="root_granted">Granted</string>
     <string name="root_denied">Not granted</string>
-    <string name="root_denied_hint">Grant this app in the KernelSU manager, then tap Refresh.</string>
+    <string name="root_denied_hint">Grant this app in the KernelSU manager, then pull down to refresh.</string>
     <string name="privilege_title">Privilege mode</string>
     <string name="privilege_mode_root">Root</string>
     <string name="privilege_mode_shizuku">Shizuku</string>
@@ -12,7 +12,7 @@
     <string name="shizuku_title">Shizuku</string>
     <string name="shizuku_ready">Authorized</string>
     <string name="shizuku_not_running">Not running</string>
-    <string name="shizuku_not_running_hint">Install Shizuku, start it with ADB or wireless debugging, then tap Refresh.</string>
+    <string name="shizuku_not_running_hint">Install Shizuku, start it with ADB or wireless debugging, then pull down to refresh.</string>
     <string name="shizuku_permission_required">Not authorized</string>
     <string name="shizuku_permission_hint">Tap the button below and allow this app in Shizuku\'s dialog.</string>
     <string name="shizuku_wrong_uid">Started as root</string>

@@ -22,7 +22,7 @@ AdvanceHotspot 是一個 Android app，在已 root 的手機上擴充系統 Wi-F
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-套件名稱是 `net.oh4ma.advancehotspot`。KernelSU 不會跳出授權提示。請開啟 KernelSU 管理器，替 AdvanceHotspot 開啟超級使用者權限，再回到 app 按「重新整理」。
+套件名稱是 `net.oh4ma.advancehotspot`。KernelSU 不會跳出授權提示。請開啟 KernelSU 管理器，替 AdvanceHotspot 開啟超級使用者權限，再回到 app 的「環境」分頁下拉重新整理。
 
 不使用 root 時，請改看 [Shizuku 模式](#shizuku-模式)。
 

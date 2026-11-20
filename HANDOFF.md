@@ -160,6 +160,7 @@ Earlier areas:
 | Liquid glass, lens, jelly, haptics on the dock (2026-11-19) | Verified on device by screenshots mid-gesture: glass bar, lifted magnifying lens, drag across tabs and past the edge, release selects the tab, idle draws no frames. Haptic ticks and mouse hover not verified (cannot be observed through adb) |
 | Public IP card and speed cards on the Hotspot tab (2026-11-19) | Verified on device: IP, country 台灣 and organization shown; speed cards show 0 with the hotspot off; the Network tab keeps only the reset button. Re-lookup on network change and non-zero speeds not checked |
 | Max-clients hint without a number (2026-11-17) | Built and installed; not seen on screen. `uiautomator dump` fails with `could not get idle state` while the app is in front |
+| Pull-to-refresh on the Environment tab replacing the refresh button (2026-11-20) | Build, lint and 29 unit tests pass. Not checked on a phone (none connected): the gesture, the indicator position under the top bar, and the top bar expanding before the pull starts |
 | UI languages zh-TW (default), en, zh-CN with per-app language config (2026-11-20) | Build, lint (same 2 accepted warnings) and 29 unit tests pass; the three string files match key-for-key (placeholder-sequence diff and `xmllint`). Language switching itself not checked on a phone (none connected) |
 
 ## Known limits
@@ -210,6 +211,10 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 5. Replace the 4-second polling in the Devices screen with the service's watcher events.
 
 ## Handoff log
+
+### 2026-11-20 (Environment pull-to-refresh)
+
+At the owner's request the Environment tab's refresh button became pull-to-refresh. `ScreenScaffold` gained optional `refreshing` and `onRefresh`; when `onRefresh` is set it applies `Modifier.pullToRefresh` outside the top bar's nested-scroll connection, so a downward drag first expands the collapsed top bar and only then pulls, and it draws the M3 Expressive `PullToRefreshDefaults.LoadingIndicator` just below the top bar. The indicator is hidden during the first load, where `LoadingBox` already shows. The root and Shizuku hints and the install step in the three READMEs now say to pull down. Other tabs are unchanged; the Hotspot tab still has its own refresh button. Build, lint and unit tests pass; not checked on a phone because none was connected. Lint now also lists 4 `GradleDependency` warnings for newer Gradle, Compose BOM, material3 1.5.0 and lifecycle releases; nothing was upgraded.
 
 Newest entry first. Add one entry per working session.
 

@@ -15,7 +15,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedListItem
@@ -53,11 +52,9 @@ fun EnvironmentScreen(modifier: Modifier = Modifier, viewModel: EnvironmentViewM
     ScreenScaffold(
         title = stringResource(R.string.tab_environment),
         modifier = modifier,
-        actions = {
-            IconButton(onClick = viewModel::refresh, enabled = !state.loading) {
-                Icon(painterResource(R.drawable.ic_refresh), contentDescription = stringResource(R.string.action_refresh))
-            }
-        },
+        // 首次載入由 LoadingBox 顯示，避免同時出現兩個指示器
+        refreshing = state.loading && info != null,
+        onRefresh = viewModel::refresh,
     ) {
         if (info == null) {
             LoadingBox(Modifier.padding(top = 120.dp))

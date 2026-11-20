@@ -4,7 +4,7 @@
     <string name="root_title">Root 权限</string>
     <string name="root_granted">已授权</string>
     <string name="root_denied">未授权</string>
-    <string name="root_denied_hint">请在 KernelSU 管理器中授权本 app，然后按“刷新”。</string>
+    <string name="root_denied_hint">请在 KernelSU 管理器中授权本 app，然后下拉刷新。</string>
     <string name="privilege_title">特权模式</string>
     <string name="privilege_mode_root">Root</string>
     <string name="privilege_mode_shizuku">Shizuku</string>
@@ -12,7 +12,7 @@
     <string name="shizuku_title">Shizuku</string>
     <string name="shizuku_ready">已授权</string>
     <string name="shizuku_not_running">未运行</string>
-    <string name="shizuku_not_running_hint">请安装 Shizuku，用 ADB 或无线调试启动，然后按“刷新”。</string>
+    <string name="shizuku_not_running_hint">请安装 Shizuku，用 ADB 或无线调试启动，然后下拉刷新。</string>
     <string name="shizuku_permission_required">未授权</string>
     <string name="shizuku_permission_hint">按下方按钮，在 Shizuku 的对话框中允许本 app。</string>
     <string name="shizuku_wrong_uid">以 root 启动</string>

@@ -22,7 +22,7 @@ Signed APKs are attached to each [release](https://github.com/yeeeee0529/Advance
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The package name is `net.oh4ma.advancehotspot`. KernelSU does not prompt for root. Open the KernelSU manager, enable superuser for AdvanceHotspot, then tap Refresh (重新整理) in the app.
+The package name is `net.oh4ma.advancehotspot`. KernelSU does not prompt for root. Open the KernelSU manager, enable superuser for AdvanceHotspot, then pull down on the Environment (環境) tab to refresh.
 
 To run without root, see [Shizuku mode](#shizuku-mode).
 

@@ -46,6 +46,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.pullToRefresh
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.toPath
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
@@ -83,6 +86,7 @@ val ScreenHorizontalPadding = 16.dp
  * 各分頁共用的頁面骨架：可隨捲動收合的大型頂部列，加上可捲動的內容欄。
  *
  * 背景使用 surfaceContainer，讓 surface 色的分段清單項目浮在背景上，符合 M3 Expressive 的設定頁樣式。
+ * 傳入 [onRefresh] 時啟用下拉重新整理，[refreshing] 為 true 時顯示指示器。
  */
 @Composable
 fun ScreenScaffold(
@@ -92,14 +96,23 @@ fun ScreenScaffold(
     actions: @Composable RowScope.() -> Unit = {},
     floatingActionButton: @Composable () -> Unit = {},
     bottomSpace: Dp = 24.dp,
+    refreshing: Boolean = false,
+    onRefresh: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val background = MaterialTheme.colorScheme.surfaceContainer
     // 底部浮動導覽列蓋在內容上：底部系統列的內距改由導覽列高度取代
     val dockInset = LocalDockInset.current
+    val pullState = rememberPullToRefreshState()
+    // 下拉手勢放在頂部列的巢狀捲動外層：往下捲時先展開頂部列，展開完才開始下拉
+    val pullModifier = if (onRefresh != null) {
+        Modifier.pullToRefresh(isRefreshing = refreshing, state = pullState, onRefresh = onRefresh)
+    } else {
+        Modifier
+    }
     Scaffold(
-        modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = modifier.then(pullModifier).nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = background,
         topBar = {
             LargeFlexibleTopAppBar(
@@ -121,14 +134,23 @@ fun ScreenScaffold(
             ScaffoldDefaults.contentWindowInsets
         },
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(innerPadding)
-                .padding(start = ScreenHorizontalPadding, end = ScreenHorizontalPadding, bottom = bottomSpace + dockInset),
-            content = content,
-        )
+        Box(Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(innerPadding)
+                    .padding(start = ScreenHorizontalPadding, end = ScreenHorizontalPadding, bottom = bottomSpace + dockInset),
+                content = content,
+            )
+            if (onRefresh != null) {
+                PullToRefreshDefaults.LoadingIndicator(
+                    state = pullState,
+                    isRefreshing = refreshing,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = innerPadding.calculateTopPadding()),
+                )
+            }
+        }
     }
 }
 

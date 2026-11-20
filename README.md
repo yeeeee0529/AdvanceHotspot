@@ -21,7 +21,7 @@ Download the signed APK from [Releases](https://github.com/yeeeee0529/AdvanceHot
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The package name is `net.oh4ma.advancehotspot`. After the first install, enable superuser for AdvanceHotspot in the KernelSU manager, then tap Refresh in the app.
+The package name is `net.oh4ma.advancehotspot`. After the first install, enable superuser for AdvanceHotspot in the KernelSU manager, then pull down on the Environment tab to refresh.
 
 ## Features
 
