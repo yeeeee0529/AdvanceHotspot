@@ -16,14 +16,18 @@ data class PublicIpInfo(
     val countryCode: String?,
     val countryName: String?,
 ) {
-    /** 以繁體中文顯示的國名；查不到時用服務回傳的英文名稱。 */
+    /** 以 app 介面語言顯示的國名；查不到時用服務回傳的英文名稱。 */
     fun localizedCountry(): String? {
-        val code = countryCode
-        if (code != null) {
-            val name = Locale.Builder().setRegion(code).build().getDisplayCountry(Locale.TRADITIONAL_CHINESE)
-            if (name.isNotBlank() && name != code) return name
+        val code = countryCode ?: return countryName
+        // 介面語言只有繁中、英文與簡中；系統是其他語言時介面退回繁中，國名跟著用繁中
+        val system = Locale.getDefault()
+        val display = when (system.language) {
+            "zh" -> system
+            "en" -> Locale.ENGLISH
+            else -> Locale.TRADITIONAL_CHINESE
         }
-        return countryName
+        val name = Locale.Builder().setRegion(code).build().getDisplayCountry(display)
+        return name.takeIf { it.isNotBlank() && it != code } ?: countryName
     }
 }
 

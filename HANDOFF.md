@@ -2,7 +2,7 @@
 
 This file is the single place where agents hand work over to each other. Read it before doing anything else, and update it before you stop. The rules for maintaining it are in [AGENTS.md](AGENTS.md).
 
-Last updated: 2026-11-19
+Last updated: 2026-11-20
 
 ## Current state
 
@@ -30,7 +30,7 @@ The UI was rewritten to Material 3 Expressive on 2026-11-16. Only the `ui` packa
 - Kotlin with Jetpack Compose, AGP 9.5.1 with built-in Kotlin, Gradle wrapper 9.8.2, libsu 6.0.0. There is no core-ktx dependency; do not add one for syntax sugar.
 - Compose Material 3 is pinned to `1.5.0-rc01` in `gradle/libs.versions.toml`, overriding the BOM. The owner chose this pre-release on purpose because the M3 Expressive components do not exist in the stable 1.4.0. Move to 1.5.0 stable once it is released.
 - Icons are hand-written vector drawables in `res/drawable` (Material Symbols paths). There is no `material-icons` dependency; add new icons the same way.
-- UI strings are Traditional Chinese (`zh-TW`) in `app/src/main/res/values/strings.xml`. Source comments are Traditional Chinese. Identifiers, diagnostics and this file are English.
+- UI strings live in `app/src/main/res/values/strings.xml` (Traditional Chinese, the default language) with full translations in `values-en` and `values-zh-rCN`; the UI follows the device language and falls back to Traditional Chinese. `res/xml/locales_config.xml` plus `android:localeConfig` in the manifest expose the three languages in the system's per-app language setting. `PublicIpInfo.localizedCountry` shows the IP-lookup country name in the app language (Chinese follows the system Chinese variant, English, else Traditional Chinese to match the UI fallback). Source comments are Traditional Chinese. Identifiers, diagnostics and this file are English.
 - Human documentation is three files kept in sync: `README.md`, `docs/zh-TW/README.md`, `docs/en/README.md`. The full READMEs keep user-facing sections first and one consolidated "Known limits" list; add new limits there, not under the "How it works" sections.
 
 ## Commands
@@ -160,6 +160,7 @@ Earlier areas:
 | Liquid glass, lens, jelly, haptics on the dock (2026-11-19) | Verified on device by screenshots mid-gesture: glass bar, lifted magnifying lens, drag across tabs and past the edge, release selects the tab, idle draws no frames. Haptic ticks and mouse hover not verified (cannot be observed through adb) |
 | Public IP card and speed cards on the Hotspot tab (2026-11-19) | Verified on device: IP, country 台灣 and organization shown; speed cards show 0 with the hotspot off; the Network tab keeps only the reset button. Re-lookup on network change and non-zero speeds not checked |
 | Max-clients hint without a number (2026-11-17) | Built and installed; not seen on screen. `uiautomator dump` fails with `could not get idle state` while the app is in front |
+| UI languages zh-TW (default), en, zh-CN with per-app language config (2026-11-20) | Build, lint (same 2 accepted warnings) and 29 unit tests pass; the three string files match key-for-key (placeholder-sequence diff and `xmllint`). Language switching itself not checked on a phone (none connected) |
 
 ## Known limits
 
@@ -211,6 +212,12 @@ Nothing is in progress. Candidates, none of them started or agreed with the owne
 ## Handoff log
 
 Newest entry first. Add one entry per working session.
+
+### 2026-11-20 (English and Simplified Chinese UI)
+
+- Owner request: add English and Simplified Chinese that follow the device language, with wording aligned to the existing Traditional Chinese strings.
+- Change: every string translated in new `values-en/strings.xml` and `values-zh-rCN/strings.xml`; all UI text already lives in `strings.xml` (no Chinese string literals in Kotlin, only comments). zh-CN terminology follows mainland conventions while keeping the zh-TW meaning: 頻道→信道, 核心→内核, 網路介面→网络接口, 詳細資料→详细信息, 重新整理→刷新, 儲存→保存, 行動網路→移动网络, 乙太網路→以太网, 回報→上报, 個別→单独, 轉送→转发, 重設→重置, and 「」→“”. `app_name` is now `translatable="false"` and stays "Advance Hotspot" everywhere. New `res/xml/locales_config.xml` and `android:localeConfig` on `<application>` (minSdk 37, no appcompat needed). `PublicIpInfo.localizedCountry` now picks the display locale from `Locale.getDefault()` instead of hardcoding Traditional Chinese, so the Hotspot tab's country follows the UI language. Lint's `PluralsCandidate` on `devices_subtitle` is a false positive (neither zh nor en inflects here) and is suppressed with `tools:ignore`. The three READMEs note the languages.
+- Checks: `assembleDebug`, `lintDebug` (same 2 accepted warnings), `testDebugUnitTest` (29 pass). `xmllint` plus a key and placeholder-sequence diff verified the three string files. **Not run on the phone** (none connected): switching system language or the per-app language setting.
 
 ### 2026-11-19 (v0.2.0 release)
 

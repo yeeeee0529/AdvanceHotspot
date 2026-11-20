@@ -41,7 +41,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 使用方式
 
-介面採用 Material 3 Expressive（Compose Material 3 `1.5.0-rc01`、動態配色）。底部的浮動導覽列有四個分頁，可以點選，也可以按住後左右拖曳切換。
+介面文字跟隨手機語言：繁體中文（預設）、簡體中文或英文。介面採用 Material 3 Expressive（Compose Material 3 `1.5.0-rc01`、動態配色）。底部的浮動導覽列有四個分頁，可以點選，也可以按住後左右拖曳切換。
 
 | 分頁 | 內容 |
 | --- | --- |

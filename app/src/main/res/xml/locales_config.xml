@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 依宣告順序即 UI 語言：values/ 為繁中預設，另有 values-en 與 values-zh-rCN -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="zh-TW" />
+    <locale android:name="en" />
+    <locale android:name="zh-CN" />
+</locale-config>

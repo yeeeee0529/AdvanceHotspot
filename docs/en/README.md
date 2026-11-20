@@ -43,7 +43,7 @@ To run without root, see [Shizuku mode](#shizuku-mode).
 
 The UI uses Material 3 Expressive (Compose Material 3 `1.5.0-rc01`, dynamic color). A floating navigation bar at the bottom has four tabs; tap one, or press and drag across the bar to switch.
 
-The UI text is Traditional Chinese. Labels below are translated.
+The UI follows the device language: Traditional Chinese (default), Simplified Chinese, or English. The labels below match the English UI.
 
 | Tab | Contents |
 | --- | --- |

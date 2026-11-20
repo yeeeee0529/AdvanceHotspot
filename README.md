@@ -1,6 +1,6 @@
 # AdvanceHotspot
 
-Advanced Wi-Fi hotspot control for one rooted Pixel: route hotspot clients through a VPN, choose each device's egress with a kill switch, run a custom intranet with local DNS names, and see per-device traffic with optional rate limits.
+Advanced Wi-Fi hotspot control for one rooted Pixel: route hotspot clients through a VPN, choose each device's egress with a kill switch, run a custom intranet with local DNS names, and see per-device traffic with optional rate limits. The UI follows the device language: Traditional Chinese (default), Simplified Chinese, or English.
 
 進階 Wi-Fi 熱點控制，需要 root；沒有 root 時可用 Shizuku 模式做基本控制。完整說明：[繁體中文](docs/zh-TW/README.md) · [English](docs/en/README.md)
 
